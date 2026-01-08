@@ -112,7 +112,7 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
     [{ text: "🎬🔥 PRÉVIAS 🔥🎬", url: PREVIAS_LINK }],
   ];
 
-  if (mensalUrl)   rows.push([{ text: "💳 11,99 / MÊS 💎", url: mensalUrl }]);
+  if (mensalUrl)   rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl)rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
   return { reply_markup: { inline_keyboard: rows } };
