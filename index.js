@@ -67,7 +67,6 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (_, res) => res.send("OK ✅ (server on)"));
-
 app.get("/mp/success", (_, res) => res.send("✅ Pagamento concluído. Volte ao Telegram e envie /vip."));
 app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
 app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
@@ -75,10 +74,33 @@ app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 // ================== BOT (WEBHOOK) ==================
 const bot = new TelegramBot(TOKEN);
 
-// Telegram webhook endpoint
+// ✅ Anti-duplicado de updates do Telegram
+// (Telegram às vezes reenvia o mesmo update; isso evita repetir /start)
+const seenUpdates = new Map(); // update_id -> timestamp
+const SEEN_TTL_MS = 2 * 60 * 1000; // 2 minutos
+
+function cleanupSeen() {
+  const now = Date.now();
+  for (const [id, ts] of seenUpdates.entries()) {
+    if (now - ts > SEEN_TTL_MS) seenUpdates.delete(id);
+  }
+}
+
+// Endpoint do webhook do Telegram (POST apenas)
 app.post("/telegram", async (req, res) => {
   res.sendStatus(200);
+
   try {
+    const updateId = req.body?.update_id;
+    if (typeof updateId === "number") {
+      cleanupSeen();
+      if (seenUpdates.has(updateId)) {
+        // Ignora update duplicado
+        return;
+      }
+      seenUpdates.set(updateId, Date.now());
+    }
+
     await bot.processUpdate(req.body);
   } catch (e) {
     console.error("❌ processUpdate:", e?.response?.data || e.message || e);
@@ -87,12 +109,11 @@ app.post("/telegram", async (req, res) => {
 
 // ================== START VIDEO ==================
 async function sendStartMedia(chatId) {
-  // ✅ agora é assets/start.mp4
   const videoPath = path.join(__dirname, "assets", "start.mp4");
 
   if (!fs.existsSync(videoPath)) {
     console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
-    return;
+    return false;
   }
 
   try {
@@ -100,8 +121,10 @@ async function sendStartMedia(chatId) {
       caption: "🔥 O queridinho do momento! 🔥"
     });
     console.log("✅ start.mp4 enviado para:", chatId);
+    return true;
   } catch (e) {
     console.error("❌ Erro ao enviar start.mp4:", e?.response?.data || e.message || e);
+    return false;
   }
 }
 
@@ -110,8 +133,6 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   const rows = [
     [{ text: "🎬🔥 PRÉVIAS 🔥🎬", url: PREVIAS_LINK }],
   ];
-
-  // Só adiciona os botões se tiver URL
   if (mensalUrl) rows.push([{ text: "💳 11,99 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
@@ -127,18 +148,14 @@ async function criarPreferencia(plan, chatId) {
       currency_id: "BRL",
       unit_price: plan.price
     }],
-
     external_reference: String(chatId),
-
     notification_url: `${PUBLIC_URL}/mp/webhook`,
-
     auto_return: "approved",
     back_urls: {
       success: `${PUBLIC_URL}/mp/success`,
       failure: `${PUBLIC_URL}/mp/failure`,
       pending: `${PUBLIC_URL}/mp/pending`
     },
-
     metadata: {
       plan_id: plan.id,
       expected_amount: plan.price,
@@ -163,37 +180,28 @@ async function getPayment(paymentId) {
   return r.data;
 }
 
-// ================== MP WEBHOOK (LIBERA VIP NO DB) ==================
+// ================== MP WEBHOOK ==================
 app.post("/mp/webhook", (req, res) => {
   res.sendStatus(200);
 
   const paymentId = req.body?.data?.id || req.body?.id;
   console.log("📩 MP webhook recebido:", JSON.stringify(req.body));
 
-  if (!paymentId) {
-    console.log("⚠️ MP webhook sem paymentId (ignorado)");
-    return;
-  }
+  if (!paymentId) return;
 
   setImmediate(async () => {
     try {
       await db.read();
 
       const pid = String(paymentId);
-      if (isProcessed(pid)) {
-        console.log("🔁 Pagamento já processado:", pid);
-        return;
-      }
+      if (isProcessed(pid)) return;
 
       const payment = await getPayment(pid);
       markProcessed(pid);
 
       if (payment.status === "approved") {
         const userId = String(payment.external_reference || "");
-        if (userId) {
-          setAuthorized(userId);
-          console.log("🎉 VIP LIBERADO NO SISTEMA para:", userId);
-        }
+        if (userId) setAuthorized(userId);
       }
 
       await db.write();
@@ -204,29 +212,31 @@ app.post("/mp/webhook", (req, res) => {
 });
 
 // ================== /start ==================
-// ✅ aceita /start e /Start
 bot.onText(/^\/start$/i, async (msg) => {
   const chatId = msg.chat.id;
 
   try {
-    // 1) cria links do MP
+    // 1) gera links do MP
     const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
     const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-    // 2) envia vídeo (opcional)
+    // 2) envia vídeo 1x
     await sendStartMedia(chatId);
 
-    // 3) envia botões (PRÉVIAS + 2 planos)
-    await bot.sendMessage(chatId, " ", salesKeyboard(mensalUrl, vitalicioUrl));
+    // 3) envia a frase + botões (igual seu print)
+    await bot.sendMessage(
+      chatId,
+      "👇 Escolha uma opção abaixo:",
+      salesKeyboard(mensalUrl, vitalicioUrl)
+    );
 
-    console.log("📨 /start ok:", chatId);
+    console.log("📨 /start enviado para:", chatId);
   } catch (e) {
-    // Mesmo se falhar MP, ainda manda o botão de prévias (pra não “sumir tudo”)
-    console.error("❌ Erro no /start (MP):", e?.response?.status, e?.response?.data || e.message || e);
+    console.error("❌ Erro no /start:", e?.response?.status, e?.response?.data || e.message || e);
 
-    await sendStartMedia(chatId).catch(() => {});
-    await bot.sendMessage(chatId, " ", salesKeyboard(null, null));
-    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento agora. Tente novamente em instantes.");
+    // Se MP falhar, manda só prévias + aviso (e NÃO repete vídeo)
+    await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", salesKeyboard(null, null));
+    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente em instantes.");
   }
 });
 
@@ -259,7 +269,7 @@ bot.onText(/^\/vip$/i, async (msg) => {
       { parse_mode: "Markdown" }
     );
 
-    console.log("🚀 /vip link enviado:", userChatId);
+    console.log("🚀 /vip -> link 1 uso enviado para:", userChatId);
   } catch (e) {
     console.error("❌ ERRO no /vip:", e?.response?.data || e.message || e);
     await bot.sendMessage(
@@ -276,10 +286,10 @@ bot.onText(/^\/vip$/i, async (msg) => {
   app.listen(PORT, async () => {
     console.log(`🌐 Server rodando na porta ${PORT}`);
 
-    // mantém simples e estável (igual seu original)
-    await bot.setWebHook(`${PUBLIC_URL}/telegram`);
+    const telegramWebhookUrl = `${PUBLIC_URL}/telegram`;
+    await bot.setWebHook(telegramWebhookUrl);
 
-    console.log("✅ Telegram webhook:", `${PUBLIC_URL}/telegram`);
+    console.log("✅ Telegram webhook:", telegramWebhookUrl);
     console.log("✅ MP webhook:", `${PUBLIC_URL}/mp/webhook`);
   });
 })();
