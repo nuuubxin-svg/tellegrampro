@@ -12,30 +12,26 @@ const path = require("path");
 const TOKEN = process.env.TOKEN;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const PUBLIC_URL = process.env.PUBLIC_URL;            // ex: https://tellegrampro.onrender.com
-const CHAT_ID_VIP = process.env.CHAT_ID_VIP;          // ex: -1003676681893  (string OK)
+const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP);  // ex: -1003676681893
 const PORT = Number(process.env.PORT || 3000);
 
-const PREVIAS_LINK = process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
+const PREVIAS_LINK =
+  process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
 
 if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
-  throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP nas Environment Variables");
-}
-
-if (!PUBLIC_URL.startsWith("https://")) {
-  throw new Error("❌ PUBLIC_URL precisa começar com https:// (ex: https://tellegrampro.onrender.com)");
+  throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env");
 }
 
 // ================== DB ==================
-// Dica: se quiser persistência real, use Disk do Render. Sem isso, db.json pode resetar.
-const dbFile = path.join(process.cwd(), "db.json");
-const adapter = new JSONFile(dbFile);
+const adapter = new JSONFile("db.json");
 const db = new Low(adapter, {
-  processed_payments: [],
-  vip_access: []
+  processed_payments: [], // paymentId
+  vip_access: []          // { userId: "id", status: "authorized"|"consumed", ts }
 });
 
 async function initDB() {
   await db.read();
+  // garante estrutura se vier vazio
   db.data ||= { processed_payments: [], vip_access: [] };
   db.data.processed_payments ||= [];
   db.data.vip_access ||= [];
@@ -65,7 +61,7 @@ function consume(userId) {
 
 // ================== PLANS ==================
 const PLANS = {
-  mensal: { id: "mensal", title: "Plano Mensal", price: 11.99 },
+  mensal:    { id: "mensal",    title: "Plano Mensal",    price: 11.99 },
   vitalicio: { id: "vitalicio", title: "Plano Vitalício", price: 19.99 },
 };
 
@@ -75,38 +71,37 @@ const closeMoney = (a, b) => Math.abs(Number(a) - Number(b)) <= 0.01;
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/", (_, res) => res.status(200).send("OK ✅ (server on)"));
-app.get("/health", (_, res) => res.status(200).json({ ok: true }));
-
-// Só pra você testar no navegador e não ver "Cannot GET"
-app.get("/telegram", (_, res) => res.status(200).send("OK ✅ Telegram endpoint (use POST via webhook)"));
+app.get("/", (_, res) => res.send("OK ✅ (server on)"));
 
 app.get("/mp/success", (_, res) => res.send("✅ Pagamento concluído. Volte ao Telegram e envie /vip."));
 app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
 app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 
-// ================== BOT (WEBHOOK) ==================
+// ================== BOT (webhook) ==================
 const bot = new TelegramBot(TOKEN);
 
 // Endpoint do webhook do Telegram
 app.post("/telegram", async (req, res) => {
   res.sendStatus(200);
 
-  // log rápido pra saber se está chegando update
-  const txt = req.body?.message?.text || req.body?.callback_query?.data || "";
-  console.log("📩 UPDATE RECEBIDO:", req.body?.update_id, txt);
+  // log útil pra debug
+  try {
+    const text = req.body?.message?.text || req.body?.edited_message?.text || "";
+    const chatId = req.body?.message?.chat?.id || req.body?.edited_message?.chat?.id || "";
+    if (text) console.log("📩 UPDATE RECEBIDO:", chatId, text);
+  } catch {}
 
   try {
     await bot.processUpdate(req.body);
   } catch (e) {
-    console.error("❌ processUpdate:", e.message);
+    console.error("❌ processUpdate:", e?.response?.data || e);
   }
 });
 
 // ================== START VIDEO ==================
 async function sendStartMedia(chatId) {
-  // coloque o arquivo em: assets/start.mp4 (commitado no GitHub)
-  const videoPath = path.join(process.cwd(), "assets", "start.mp4");
+  // Coloque o arquivo em: assets/start.mp4 (dentro do repo)
+  const videoPath = path.join(__dirname, "assets", "start.mp4");
 
   if (!fs.existsSync(videoPath)) {
     console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
@@ -119,7 +114,7 @@ async function sendStartMedia(chatId) {
     });
     console.log("✅ start.mp4 enviado para:", chatId);
   } catch (e) {
-    console.error("❌ Erro ao enviar start.mp4:", e.message);
+    console.error("❌ Erro ao enviar start.mp4:", e?.response?.data || e);
   }
 }
 
@@ -178,7 +173,7 @@ async function getPayment(paymentId) {
   return r.data;
 }
 
-// ================== MP WEBHOOK (LIBERA VIP NO DB) ==================
+// ================== MP WEBHOOK (só libera no DB) ==================
 app.post("/mp/webhook", (req, res) => {
   res.sendStatus(200);
 
@@ -227,32 +222,44 @@ app.post("/mp/webhook", (req, res) => {
 
       await db.write();
     } catch (e) {
-      console.error("❌ ERRO no /mp/webhook:", e?.response?.data || e.message);
+      console.error("❌ ERRO no /mp/webhook:", e?.response?.data || e);
     }
   });
 });
 
 // ================== /start ==================
-bot.onText(/\/start/, async (msg) => {
+// ✅ aceita /start, /Start, /START etc
+bot.onText(/^\/start$/i, async (msg) => {
   const chatId = msg.chat.id;
 
   try {
+    // 1) responde SEMPRE primeiro
+    await bot.sendMessage(chatId, "✅ Bot online. Gerando seu pagamento...");
+
+    // 2) tenta enviar o vídeo (se falhar, só loga e segue)
     await sendStartMedia(chatId);
 
+    // 3) gera links do Mercado Pago
     const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
     const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-    // ✅ removido o texto "👇 Escolha uma opção abaixo:"
+    // 4) manda o teclado (sem “👇 Escolha uma opção abaixo:”)
     await bot.sendMessage(chatId, " ", salesKeyboard(mensalUrl, vitalicioUrl));
+
     console.log("📨 /start enviado para:", chatId);
   } catch (e) {
-    console.error("❌ Erro no /start:", e?.response?.data || e.message);
-    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.");
+    console.error("❌ Erro no /start:", e?.response?.data || e);
+
+    try {
+      await bot.sendMessage(chatId, "⚠️ Deu erro ao gerar pagamento. Tente novamente em instantes.");
+    } catch (err2) {
+      console.error("❌ Falhou até pra mandar mensagem:", err2?.response?.data || err2);
+    }
   }
 });
 
 // ================== /vip (LINK 1 USO) ==================
-bot.onText(/\/vip/, async (msg) => {
+bot.onText(/^\/vip$/i, async (msg) => {
   const userChatId = msg.chat.id;
 
   try {
@@ -283,7 +290,7 @@ bot.onText(/\/vip/, async (msg) => {
 
     console.log("🚀 /vip -> link 1 uso enviado para:", userChatId);
   } catch (e) {
-    console.error("❌ ERRO no /vip:", e?.response?.data || e.message);
+    console.error("❌ ERRO no /vip:", e?.response?.data || e);
     await bot.sendMessage(
       userChatId,
       "⚠️ Erro ao gerar link VIP. Confirme se o bot é ADMIN no VIP e tem permissão de convidar via link."
@@ -291,7 +298,7 @@ bot.onText(/\/vip/, async (msg) => {
   }
 });
 
-// ================== START SERVER + SET WEBHOOK ==================
+// ================== START SERVER + WEBHOOK ==================
 (async () => {
   await initDB();
 
