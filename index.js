@@ -11,284 +11,116 @@ const path = require("path");
 // ================== ENV ==================
 const TOKEN = process.env.TOKEN;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const PUBLIC_URL = process.env.PUBLIC_URL;            // ex: https://tellegrampro.onrender.com
-const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP);  // ex: -1003676681893
+const PUBLIC_URL = process.env.PUBLIC_URL;
+const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP);
 const PORT = Number(process.env.PORT || 3000);
 
-const PREVIAS_LINK =
-  process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
+const PREVIAS_LINK = process.env.PREVIAS_LINK;
 
 if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
-  throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env/Render");
+  throw new Error("❌ Variáveis de ambiente faltando");
 }
 
 // ================== DB ==================
 const adapter = new JSONFile("db.json");
 const db = new Low(adapter, {
-  processed_payments: [], // paymentId
-  vip_access: []          // { userId: "id", status: "authorized"|"consumed", ts }
+  processed_payments: [],
+  vip_access: []
 });
 
 async function initDB() {
   await db.read();
   db.data ||= { processed_payments: [], vip_access: [] };
-  db.data.processed_payments ||= [];
-  db.data.vip_access ||= [];
   await db.write();
 }
 
-function isProcessed(paymentId) {
-  return db.data.processed_payments.includes(String(paymentId));
-}
-function markProcessed(paymentId) {
-  db.data.processed_payments.push(String(paymentId));
-}
-function setAuthorized(userId) {
-  const uid = String(userId);
-  db.data.vip_access = db.data.vip_access.filter(v => v.userId !== uid);
-  db.data.vip_access.push({ userId: uid, status: "authorized", ts: Date.now() });
-}
-function getStatus(userId) {
-  const uid = String(userId);
-  return db.data.vip_access.find(v => v.userId === uid)?.status || null;
-}
-function consume(userId) {
-  const uid = String(userId);
-  const row = db.data.vip_access.find(v => v.userId === uid);
-  if (row) row.status = "consumed";
-}
-
-// ================== PLANS ==================
-const PLANS = {
-  mensal:    { id: "mensal",    title: "Plano Mensal",    price: 11.99 },
-  vitalicio: { id: "vitalicio", title: "Plano Vitalício", price: 19.99 },
-};
-
-const closeMoney = (a, b) => Math.abs(Number(a) - Number(b)) <= 0.01;
-
 // ================== APP ==================
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json());
 
-app.get("/", (_, res) => res.send("OK ✅ (server on)"));
+app.get("/", (_, res) => res.send("OK"));
 
-app.get("/mp/success", (_, res) => res.send("✅ Pagamento concluído. Volte ao Telegram e envie /vip."));
-app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
-app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
-
-// ================== BOT (webhook) ==================
-const bot = new TelegramBot(TOKEN);
-
-// Endpoint do webhook do Telegram (POST)
 app.post("/telegram", async (req, res) => {
   res.sendStatus(200);
-  try {
-    await bot.processUpdate(req.body);
-  } catch (e) {
-    console.error("❌ processUpdate:", e.message);
-  }
+  await bot.processUpdate(req.body);
 });
+
+// ================== BOT ==================
+const bot = new TelegramBot(TOKEN);
 
 // ================== START VIDEO ==================
 async function sendStartMedia(chatId) {
-  // Coloque o arquivo no GitHub em: assets/start.mp4
   const videoPath = path.join(__dirname, "assets", "start.mp4");
+  if (!fs.existsSync(videoPath)) return;
 
-  if (!fs.existsSync(videoPath)) {
-    console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
-    return;
-  }
-
-  try {
-    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-      caption: "🔥 O queridinho do momento! 🔥"
-    });
-    console.log("✅ start.mp4 enviado para:", chatId);
-  } catch (e) {
-    console.error("❌ Erro ao enviar start.mp4:", e.message);
-  }
+  await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
+    caption: "🔥 O queridinho do momento! 🔥"
+  });
 }
 
-function salesKeyboard(mensalUrl, vitalicioUrl) {
-  const rows = [
-    [{ text: "🎬🔥 PRÉVIAS 🔥🎬", url: PREVIAS_LINK }],
-  ];
-  if (mensalUrl) rows.push([{ text: "💳 11,99 / MÊS 💎", url: mensalUrl }]);
-  if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
-
-  return { reply_markup: { inline_keyboard: rows } };
+function keyboard(mensal, vitalicio) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🎬 PRÉVIAS", url: PREVIAS_LINK }],
+        [{ text: "💳 11,99 / MÊS", url: mensal }],
+        [{ text: "💥 19,99 VITALÍCIO", url: vitalicio }]
+      ]
+    }
+  };
 }
 
 // ================== MERCADO PAGO ==================
 async function criarPreferencia(plan, chatId) {
-  const payload = {
-    items: [{
-      title: plan.title,
-      quantity: 1,
-      currency_id: "BRL",
-      unit_price: plan.price
-    }],
-
-    external_reference: String(chatId),
-
-    notification_url: `${PUBLIC_URL}/mp/webhook`,
-
-    auto_return: "approved",
-    back_urls: {
-      success: `${PUBLIC_URL}/mp/success`,
-      failure: `${PUBLIC_URL}/mp/failure`,
-      pending: `${PUBLIC_URL}/mp/pending`
-    },
-
-    metadata: {
-      plan_id: plan.id,
-      expected_amount: plan.price,
-      user_id: String(chatId)
-    }
-  };
-
   const r = await axios.post(
     "https://api.mercadopago.com/checkout/preferences",
-    payload,
+    {
+      items: [{
+        title: plan.title,
+        quantity: 1,
+        currency_id: "BRL",
+        unit_price: plan.price
+      }],
+      external_reference: String(chatId),
+      notification_url: `${PUBLIC_URL}/mp/webhook`
+    },
     { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` } }
   );
-
   return r.data.init_point;
 }
-
-async function getPayment(paymentId) {
-  const r = await axios.get(
-    `https://api.mercadopago.com/v1/payments/${paymentId}`,
-    { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` } }
-  );
-  return r.data;
-}
-
-// ================== MP WEBHOOK (só libera no DB) ==================
-app.post("/mp/webhook", (req, res) => {
-  res.sendStatus(200);
-
-  const paymentId = req.body?.data?.id || req.body?.id;
-
-  console.log("📩 MP webhook recebido:", JSON.stringify(req.body));
-
-  if (!paymentId) {
-    console.log("⚠️ MP webhook sem paymentId (ignorado)");
-    return;
-  }
-
-  setImmediate(async () => {
-    try {
-      await db.read();
-
-      const pid = String(paymentId);
-      if (isProcessed(pid)) {
-        console.log("🔁 Pagamento já processado:", pid);
-        return;
-      }
-
-      const payment = await getPayment(pid);
-
-      const status = payment.status;
-      const userId = String(payment.external_reference || "");
-      const amount = Number(payment.transaction_amount || 0);
-      const planId = payment.metadata?.plan_id;
-      const expected = payment.metadata?.expected_amount;
-
-      console.log("✅ Payment details:", { pid, status, userId, amount, planId, expected });
-
-      markProcessed(pid);
-
-      const plan = planId
-        ? PLANS[planId]
-        : Object.values(PLANS).find(p => closeMoney(p.price, amount));
-
-      if (status === "approved" && userId && plan && closeMoney(expected ?? plan.price, amount)) {
-        setAuthorized(userId);
-        console.log("🎉 VIP LIBERADO NO SISTEMA para userId:", userId);
-        console.log("👉 Usuário deve enviar /vip");
-      } else {
-        console.log("🟡 Não liberou (status/plano/valor não bateu):", { status, userId, amount, planId, expected });
-      }
-
-      await db.write();
-    } catch (e) {
-      console.error("❌ ERRO no /mp/webhook:", e?.response?.data || e.message);
-    }
-  });
-});
 
 // ================== /start ==================
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
 
-  try {
-    await sendStartMedia(chatId);
+  await sendStartMedia(chatId);
 
-    const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
-    const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
+  const mensal = await criarPreferencia({ title: "Plano Mensal", price: 11.99 }, chatId);
+  const vitalicio = await criarPreferencia({ title: "Plano Vitalício", price: 19.99 }, chatId);
 
-    // ✅ removido "👇 Escolha uma opção abaixo:"
-    await bot.sendMessage(chatId, "✅ Opções:", salesKeyboard(mensalUrl, vitalicioUrl));
-    console.log("📨 /start enviado para:", chatId);
-  } catch (e) {
-    console.error("❌ Erro no /start:", e?.response?.data || e.message);
-    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.");
-  }
+  await bot.sendMessage(chatId, " ", keyboard(mensal, vitalicio));
 });
 
-// ================== /vip (LINK 1 USO) ==================
+// ================== /vip ==================
 bot.onText(/\/vip/, async (msg) => {
-  const userChatId = msg.chat.id;
+  const invite = await bot.createChatInviteLink(CHAT_ID_VIP, {
+    member_limit: 1
+  });
 
-  try {
-    await db.read();
-    const status = getStatus(userChatId);
-
-    if (status !== "authorized") {
-      return bot.sendMessage(
-        userChatId,
-        "⚠️ Você ainda não está liberado.\n\n1) Envie /start\n2) Faça o pagamento\n3) Depois envie /vip"
-      );
-    }
-
-    // ✅ LINK ÚNICO (1 uso)
-    const invite = await bot.createChatInviteLink(CHAT_ID_VIP, {
-      member_limit: 1,
-      name: `VIP-${userChatId}-${Date.now()}`
-    });
-
-    consume(userChatId);
-    await db.write();
-
-    await bot.sendMessage(
-      userChatId,
-      `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
-      { parse_mode: "Markdown" }
-    );
-
-    console.log("🚀 /vip -> link 1 uso enviado para:", userChatId);
-  } catch (e) {
-    console.error("❌ ERRO no /vip:", e?.response?.data || e.message);
-    await bot.sendMessage(
-      userChatId,
-      "⚠️ Erro ao gerar link VIP. Confirme se o bot é ADMIN no VIP e tem permissão de convidar via link."
-    );
-  }
+  await bot.sendMessage(
+    msg.chat.id,
+    `🔓 *Link VIP (1 uso):*\n${invite.invite_link}`,
+    { parse_mode: "Markdown" }
+  );
 });
 
-// ================== START SERVER + WEBHOOK ==================
+// ================== START ==================
 (async () => {
   await initDB();
 
   app.listen(PORT, async () => {
-    console.log(`🌐 Server rodando na porta ${PORT}`);
-
-    // ✅ importante quando muda domínio/URL
     await bot.deleteWebHook();
     await bot.setWebHook(`${PUBLIC_URL}/telegram`);
-
-    console.log("✅ Telegram webhook:", `${PUBLIC_URL}/telegram`);
-    console.log("✅ MP webhook:", `${PUBLIC_URL}/mp/webhook`);
+    console.log("BOT ONLINE");
   });
 })();
