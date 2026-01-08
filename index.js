@@ -56,7 +56,7 @@ function consume(userId) {
 
 // ================== PLANS ==================
 const PLANS = {
-  mensal:    { id: "mensal",    title: "Plano Mensal",    price: 11.99 },
+  mensal:    { id: "mensal",    title: "Plano Mensal",    price: 9.90 },
   vitalicio: { id: "vitalicio", title: "Plano Vitalício", price: 19.99 },
 };
 
