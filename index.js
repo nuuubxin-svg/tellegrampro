@@ -15,10 +15,11 @@ const PUBLIC_URL = process.env.PUBLIC_URL;            // ex: https://tellegrampr
 const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP);  // ex: -1003676681893
 const PORT = Number(process.env.PORT || 3000);
 
-const PREVIAS_LINK = process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
+const PREVIAS_LINK =
+  process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
 
 if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
-  throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env");
+  throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env/Render");
 }
 
 // ================== DB ==================
@@ -30,7 +31,6 @@ const db = new Low(adapter, {
 
 async function initDB() {
   await db.read();
-  // garante estrutura se vier vazio
   db.data ||= { processed_payments: [], vip_access: [] };
   db.data.processed_payments ||= [];
   db.data.vip_access ||= [];
@@ -79,7 +79,7 @@ app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 // ================== BOT (webhook) ==================
 const bot = new TelegramBot(TOKEN);
 
-// Endpoint do webhook do Telegram
+// Endpoint do webhook do Telegram (POST)
 app.post("/telegram", async (req, res) => {
   res.sendStatus(200);
   try {
@@ -91,8 +91,7 @@ app.post("/telegram", async (req, res) => {
 
 // ================== START VIDEO ==================
 async function sendStartMedia(chatId) {
-  // ✅ Render vai ter o arquivo se ele estiver no GitHub
-  // Coloque em: assets/start.mp4
+  // Coloque o arquivo no GitHub em: assets/start.mp4
   const videoPath = path.join(__dirname, "assets", "start.mp4");
 
   if (!fs.existsSync(videoPath)) {
@@ -229,7 +228,8 @@ bot.onText(/\/start/, async (msg) => {
     const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
     const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-    await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", salesKeyboard(mensalUrl, vitalicioUrl));
+    // ✅ removido "👇 Escolha uma opção abaixo:"
+    await bot.sendMessage(chatId, "✅ Opções:", salesKeyboard(mensalUrl, vitalicioUrl));
     console.log("📨 /start enviado para:", chatId);
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
@@ -252,6 +252,7 @@ bot.onText(/\/vip/, async (msg) => {
       );
     }
 
+    // ✅ LINK ÚNICO (1 uso)
     const invite = await bot.createChatInviteLink(CHAT_ID_VIP, {
       member_limit: 1,
       name: `VIP-${userChatId}-${Date.now()}`
@@ -283,10 +284,11 @@ bot.onText(/\/vip/, async (msg) => {
   app.listen(PORT, async () => {
     console.log(`🌐 Server rodando na porta ${PORT}`);
 
-    const telegramWebhookUrl = `${PUBLIC_URL}/telegram`;
-    await bot.setWebHook(telegramWebhookUrl);
+    // ✅ importante quando muda domínio/URL
+    await bot.deleteWebHook();
+    await bot.setWebHook(`${PUBLIC_URL}/telegram`);
 
-    console.log("✅ Telegram webhook:", telegramWebhookUrl);
+    console.log("✅ Telegram webhook:", `${PUBLIC_URL}/telegram`);
     console.log("✅ MP webhook:", `${PUBLIC_URL}/mp/webhook`);
   });
 })();
