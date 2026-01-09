@@ -42,7 +42,8 @@ function markProcessed(paymentId) {
 function setAuthorized(userId) {
   const uid = String(userId);
   db.data.vip_access = db.data.vip_access.filter(v => v.userId !== uid);
-  db.data.vip_access.push({ userId: uid, status: "authorized", ts: Date.now() });
+  // ✅ adiciona campo vip_sent para controlar duplicidade
+  db.data.vip_access.push({ userId: uid, status: "authorized", ts: Date.now(), vip_sent: false });
 }
 function getStatus(userId) {
   const uid = String(userId);
@@ -52,6 +53,23 @@ function consume(userId) {
   const uid = String(userId);
   const row = db.data.vip_access.find(v => v.userId === uid);
   if (row) row.status = "consumed";
+}
+
+// ✅ NOVO: trava anti-duplicidade do VIP automático
+function hasVipSent(userId) {
+  const uid = String(userId);
+  const row = db.data.vip_access.find(v => v.userId === uid);
+  return row?.vip_sent === true;
+}
+function markVipSent(userId) {
+  const uid = String(userId);
+  const row = db.data.vip_access.find(v => v.userId === uid);
+  if (row) row.vip_sent = true;
+}
+function unmarkVipSent(userId) {
+  const uid = String(userId);
+  const row = db.data.vip_access.find(v => v.userId === uid);
+  if (row) row.vip_sent = false;
 }
 
 // ================== PLANS ==================
@@ -300,17 +318,30 @@ app.post("/mp/webhook", (req, res) => {
         // libera no DB
         setAuthorized(userId);
 
+        // ✅ TRAVA: se já enviou VIP pro usuário, não manda de novo
+        if (hasVipSent(userId)) {
+          console.log("🔁 VIP já enviado para userId:", userId);
+          markProcessed(pid);
+          await db.write();
+          return;
+        }
+
+        // ✅ marca como "enviando" e salva IMEDIATO para evitar corrida
+        markVipSent(userId);
+        markProcessed(pid);
+        await db.write();
+
         // ✅ envia automaticamente o VIP
         try {
           await sendVipInviteNow(userId);
           consume(userId); // marca como consumido porque já mandou o link
+          await db.write();
         } catch (e) {
           console.error("❌ Falha ao enviar VIP automático:", e?.response?.data || e.message);
-          // fica authorized para a pessoa usar /vip como fallback
+          // fallback: deixa "authorized" e libera /vip depois
+          unmarkVipSent(userId);
+          await db.write();
         }
-
-        // marca pagamento como finalizado
-        markProcessed(pid);
 
         console.log("🎉 VIP LIBERADO + enviado automático para userId:", userId);
       } else {
@@ -318,7 +349,6 @@ app.post("/mp/webhook", (req, res) => {
         // ❌ NÃO marca processado aqui (pra não bloquear quando virar approved)
       }
 
-      await db.write();
     } catch (e) {
       console.error("❌ ERRO no /mp/webhook:", e?.response?.data || e.message);
     }
