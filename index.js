@@ -107,7 +107,7 @@ async function sendStartMedia(chatId) {
   }
 }
 
-// ================== [ADICIONADO] Barrinha (Start + VIP lado a lado) ==================
+// ================== Barrinha (Start + VIP lado a lado) ==================
 function barStartVip() {
   return [
     [
@@ -125,7 +125,7 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
-  // ================== [ALTERADO] Adiciona a barrinha com Start + VIP ==================
+  // adiciona a barrinha com Start + VIP no final
   rows.push(...barStartVip());
 
   return { reply_markup: { inline_keyboard: rows } };
@@ -231,67 +231,62 @@ app.post("/mp/webhook", (req, res) => {
   });
 });
 
-// ================== [ADICIONADO] BLOQUEIO de mídia (câmera/áudio/imagens/arquivos) ==================
-bot.on("message", async (msg) => {
+// ================== BLOQUEIO de mídia (reforçado por tipo) ==================
+async function blockMedia(msg) {
   const chatId = msg.chat.id;
 
-  // deixa /start e /vip passarem normal
+  // se vier /start ou /vip como texto, não bloquear
   const text = msg.text || "";
   if (/^\/start/i.test(text) || /^\/vip/i.test(text)) return;
-
-  const isBlocked =
-    !!msg.voice ||
-    !!msg.audio ||
-    !!msg.photo ||
-    !!msg.video ||
-    !!msg.video_note ||
-    !!msg.document ||
-    !!msg.animation ||
-    !!msg.sticker;
-
-  if (!isBlocked) return;
 
   // tenta apagar a mensagem proibida
   try {
     await bot.deleteMessage(chatId, msg.message_id);
   } catch (e) {
-    // pode falhar por permissão/contexto, mas segue o aviso
+    // em grupo/canal pode falhar se o bot não for admin
   }
 
-  // avisa e dá a "barrinha" de Start/VIP
   await bot.sendMessage(
     chatId,
-    "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões abaixo:",
+    "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
       reply_markup: { inline_keyboard: barStartVip() }
     }
   );
-});
+}
 
-// ================== [ADICIONADO] Fluxo reaproveitável do START ==================
+bot.on("photo", blockMedia);
+bot.on("voice", blockMedia);
+bot.on("audio", blockMedia);
+bot.on("video", blockMedia);
+bot.on("video_note", blockMedia);
+bot.on("document", blockMedia);
+bot.on("animation", blockMedia);
+bot.on("sticker", blockMedia);
+// opcionais (se quiser bloquear também):
+bot.on("location", blockMedia);
+bot.on("contact", blockMedia);
+
+// ================== Fluxo reaproveitável do START ==================
 async function runStartFlow(chatId) {
-  // 1) envia o vídeo (uma vez)
   await sendStartMedia(chatId);
 
-  // 2) cria as preferências (links)
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-  // 3) envia botões (com compras + barrinha Start/VIP)
   await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", salesKeyboard(mensalUrl, vitalicioUrl));
 
   console.log("📨 START flow enviado para:", chatId);
 }
 
-// ================== [ADICIONADO] Fluxo reaproveitável do VIP ==================
+// ================== Fluxo reaproveitável do VIP ==================
 async function runVipFlow(userChatId) {
   await db.read();
   db.data ||= { processed_payments: [], vip_access: [] };
 
   const status = getStatus(userChatId);
 
-  // ❌ ainda não pagou / não foi liberado
   if (status !== "authorized") {
     return bot.sendMessage(
       userChatId,
@@ -305,7 +300,6 @@ async function runVipFlow(userChatId) {
     );
   }
 
-  // ✅ pagou: gera link único (1 uso)
   const invite = await bot.createChatInviteLink(CHAT_ID_VIP, {
     member_limit: 1,
     name: `VIP-${userChatId}-${Date.now()}`
@@ -340,7 +334,7 @@ bot.onText(/\/start/i, async (msg) => {
   }
 });
 
-// ================== /vip (LINK 1 USO) ==================
+// ================== /vip ==================
 bot.onText(/\/vip/i, async (msg) => {
   const userChatId = msg.chat.id;
 
@@ -356,7 +350,7 @@ bot.onText(/\/vip/i, async (msg) => {
   }
 });
 
-// ================== [ADICIONADO] Botões Start/VIP (callback) ==================
+// ================== Botões Start/VIP (callback) ==================
 bot.on("callback_query", async (query) => {
   const chatId = query.message?.chat?.id;
   const data = query.data;
@@ -364,7 +358,6 @@ bot.on("callback_query", async (query) => {
   if (!chatId) return;
 
   try {
-    // tira o "loading..." do botão
     await bot.answerCallbackQuery(query.id);
   } catch (_) {}
 
