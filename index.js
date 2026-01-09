@@ -122,37 +122,18 @@ async function sendStartMedia(chatId) {
   }
 }
 
-// ================== PAYMENT VIDEO (assets/pagamento.mp4) ==================
-async function sendPaymentMedia(chatId) {
-  const videoPath = path.join(__dirname, "assets", "pagamento.mp4");
-
-  if (!fs.existsSync(videoPath)) {
-    console.log("⚠️ pagamento.mp4 NÃO encontrado:", videoPath);
-    return;
-  }
-
-  try {
-    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-      caption: "🔥 Escolha seu plano abaixo:"
-    });
-    console.log("✅ pagamento.mp4 enviado para:", chatId);
-  } catch (e) {
-    console.error("❌ Erro ao enviar pagamento.mp4:", e.message);
-  }
-}
-
-// ================== BARRINHA (Start + Pagamento + VIP) ==================
-function barStartPayVip() {
+// ================== BARRINHA (🎁 + VIP) ==================
+// ✅ troca o antigo Start por 🎁 e remove PAGAMENTO
+function barGiftVip() {
   return [
     [
-      { text: "▶️ Start", callback_data: "DO_START" },
-      { text: "🔥 PAGAMENTO 🔥", callback_data: "DO_PAY" },
+      { text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" },
       { text: "🔓 VIP", callback_data: "DO_VIP" }
     ]
   ];
 }
 
-// ================== teclado completo do /start (mantém prévios + barrinha) ==================
+// ================== teclado completo do /start (mantém prévios + planos + barrinha) ==================
 function salesKeyboard(mensalUrl, vitalicioUrl) {
   const rows = [
     [{ text: "🎬🔥 PRÉVIAS 🔥🎬", url: PREVIAS_LINK }],
@@ -161,18 +142,17 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
-  rows.push(...barStartPayVip());
+  // ✅ agora a barrinha é 🎁 + VIP
+  rows.push(...barGiftVip());
 
   return { reply_markup: { inline_keyboard: rows } };
 }
 
-// ✅ NOVO: teclado APENAS com os dois planos (sem prévios e sem barrinha)
+// ✅ teclado APENAS com os dois planos (sem prévios e sem barrinha)
 function paymentOnlyKeyboard(mensalUrl, vitalicioUrl) {
   const rows = [];
-
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
-
   return { reply_markup: { inline_keyboard: rows } };
 }
 
@@ -396,7 +376,7 @@ async function blockMedia(msg) {
     "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barStartPayVip() }
+      reply_markup: { inline_keyboard: barGiftVip() }
     }
   );
 }
@@ -424,23 +404,50 @@ async function runStartFlow(chatId) {
   console.log("📨 START flow enviado para:", chatId);
 }
 
-// ================== Flow do PAGAMENTO (COM VÍDEO pagamento.mp4 + SÓ 2 PLANOS) ==================
-async function runPaymentFlow(chatId) {
-  await sendPaymentMedia(chatId);
-
+// ================== Flow do 🎁 PRESENTE (pagamento.mp4 + SOMENTE 2 BOTÕES) ==================
+// ✅ Agora o vídeo de pagamento já carrega os 2 botões, sem mensagem extra e sem barrinha.
+async function runGiftFlow(chatId) {
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-  await bot.sendMessage(
-    chatId,
-    "👇 *Escolha seu plano abaixo:*",
-    {
+  const videoPath = path.join(__dirname, "assets", "pagamento.mp4");
+  if (!fs.existsSync(videoPath)) {
+    console.log("⚠️ pagamento.mp4 NÃO encontrado:", videoPath);
+
+    // fallback: manda só a mensagem com os 2 botões
+    await bot.sendMessage(
+      chatId,
+      "🔥COMPLETO NO VIP 🔥",
+      {
+        parse_mode: "Markdown",
+        ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl)
+      }
+    );
+    return;
+  }
+
+  try {
+    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
+      caption: "🔥COMPLETO NO VIP 🔥",
       parse_mode: "Markdown",
       ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl)
-    }
-  );
+    });
+    console.log("✅ pagamento.mp4 enviado (🎁 presente) para:", chatId);
+  } catch (e) {
+    console.error("❌ Erro ao enviar pagamento.mp4:", e.message);
 
-  console.log("💳 PAYMENT flow enviado para:", chatId);
+    // fallback: manda só a mensagem com os 2 botões
+    await bot.sendMessage(
+      chatId,
+      "🔥O MOTOBOY VAZOU 🔥 COMPLETO NO VIP 🔥",
+      {
+        parse_mode: "Markdown",
+        ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl)
+      }
+    );
+  }
+
+  console.log("🎁 GIFT flow enviado para:", chatId);
 }
 
 // ================== Fluxo reaproveitável do VIP ==================
@@ -455,13 +462,13 @@ async function runVipFlow(userChatId) {
       userChatId,
       "⚠️ Você ainda não está liberado.\n\n" +
       "✅ Passo a passo:\n" +
-      "1) Clique no botão *🔥 PAGAMENTO 🔥*\n" +
+      "1) Clique no botão *🎁 presente aqui 🎁*\n" +
       "2) Faça o pagamento\n" +
       "3) Aguarde a aprovação (o link aparecerá automaticamente)\n\n" +
       "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
       {
         parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: barStartPayVip() }
+        reply_markup: { inline_keyboard: barGiftVip() }
       }
     );
   }
@@ -479,7 +486,7 @@ async function runVipFlow(userChatId) {
     `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barStartPayVip() }
+      reply_markup: { inline_keyboard: barGiftVip() }
     }
   );
 
@@ -495,7 +502,7 @@ bot.onText(/\/start/i, async (msg) => {
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
     await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente em instantes.", {
-      reply_markup: { inline_keyboard: barStartPayVip() }
+      reply_markup: { inline_keyboard: barGiftVip() }
     });
   }
 });
@@ -511,12 +518,12 @@ bot.onText(/\/vip/i, async (msg) => {
     await bot.sendMessage(
       userChatId,
       "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
-      { reply_markup: { inline_keyboard: barStartPayVip() } }
+      { reply_markup: { inline_keyboard: barGiftVip() } }
     );
   }
 });
 
-// ================== Botões Start/Pagamento/VIP (callback) ==================
+// ================== Botões 🎁/VIP (callback) ==================
 bot.on("callback_query", async (query) => {
   const chatId = query.message?.chat?.id;
   const data = query.data;
@@ -527,24 +534,14 @@ bot.on("callback_query", async (query) => {
     await bot.answerCallbackQuery(query.id);
   } catch (_) {}
 
-  if (data === "DO_START") {
+  // 🎁 presente aqui 🎁 -> abre pagamento.mp4 + 2 botões
+  if (data === "DO_GIFT") {
     try {
-      await runStartFlow(chatId);
+      await runGiftFlow(chatId);
     } catch (e) {
-      console.error("❌ Erro DO_START:", e?.response?.data || e.message);
-      await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
-        reply_markup: { inline_keyboard: barStartPayVip() }
-      });
-    }
-  }
-
-  if (data === "DO_PAY") {
-    try {
-      await runPaymentFlow(chatId);
-    } catch (e) {
-      console.error("❌ Erro DO_PAY:", e?.response?.data || e.message);
-      await bot.sendMessage(chatId, "⚠️ Erro ao abrir pagamento. Tente novamente.", {
-        reply_markup: { inline_keyboard: barStartPayVip() }
+      console.error("❌ Erro DO_GIFT:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao abrir o presente. Tente novamente.", {
+        reply_markup: { inline_keyboard: barGiftVip() }
       });
     }
   }
@@ -555,7 +552,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_VIP:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao gerar VIP. Tente novamente.", {
-        reply_markup: { inline_keyboard: barStartPayVip() }
+        reply_markup: { inline_keyboard: barGiftVip() }
       });
     }
   }
