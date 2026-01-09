@@ -42,7 +42,6 @@ function markProcessed(paymentId) {
 function setAuthorized(userId) {
   const uid = String(userId);
   db.data.vip_access = db.data.vip_access.filter(v => v.userId !== uid);
-  // ✅ adiciona campo vip_sent para controlar duplicidade
   db.data.vip_access.push({ userId: uid, status: "authorized", ts: Date.now(), vip_sent: false });
 }
 function getStatus(userId) {
@@ -55,7 +54,7 @@ function consume(userId) {
   if (row) row.status = "consumed";
 }
 
-// ✅ NOVO: trava anti-duplicidade do VIP automático
+// ✅ trava anti-duplicidade do VIP automático
 function hasVipSent(userId) {
   const uid = String(userId);
   const row = db.data.vip_access.find(v => v.userId === uid);
@@ -85,9 +84,9 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (_, res) => res.send("OK ✅ (server on)"));
-app.get("/telegram", (_, res) => res.send("OK ✅ (telegram endpoint expects POST)")); // só pra teste no browser
+app.get("/telegram", (_, res) => res.send("OK ✅ (telegram endpoint expects POST)"));
 
-app.get("/mp/success", (_, res) => res.send("✅ Pagamento concluído. Volte ao Telegram e envie /vip."));
+app.get("/mp/success", (_, res) => res.send("✅ Pagamento concluído. Volte ao Telegram e aguarde o link VIP."));
 app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
 app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 
@@ -106,8 +105,6 @@ app.post("/telegram", async (req, res) => {
 
 // ================== START VIDEO ==================
 async function sendStartMedia(chatId) {
-  // Coloque o arquivo aqui no repo:
-  // assets/start.mp4
   const videoPath = path.join(__dirname, "assets", "start.mp4");
 
   if (!fs.existsSync(videoPath)) {
@@ -125,11 +122,12 @@ async function sendStartMedia(chatId) {
   }
 }
 
-// ================== Barrinha (Start + VIP lado a lado) ==================
-function barStartVip() {
+// ================== BARRINHA (Start + Pagamento + VIP) ==================
+function barStartPayVip() {
   return [
     [
       { text: "▶️ Start", callback_data: "DO_START" },
+      { text: "🔥 PAGAMENTO 🔥", callback_data: "DO_PAY" },
       { text: "🔓 VIP", callback_data: "DO_VIP" }
     ]
   ];
@@ -143,18 +141,16 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
-  // adiciona a barrinha com Start + VIP no final
-  rows.push(...barStartVip());
-
+  rows.push(...barStartPayVip());
   return { reply_markup: { inline_keyboard: rows } };
 }
 
-// ✅ teclado do VIP automático (botão "Entrar no VIP")
+// ✅ teclado do VIP automático
 function vipAccessKeyboard(inviteLink) {
   return {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🔓 Entrar no VIP", url: inviteLink }],
+        [{ text: "🔓 Entrar no VIP", url: inviteLink }]
       ]
     }
   };
@@ -171,7 +167,6 @@ async function criarPreferencia(plan, chatId) {
     }],
 
     external_reference: String(chatId),
-
     notification_url: `${PUBLIC_URL}/mp/webhook`,
 
     auto_return: "approved",
@@ -205,7 +200,6 @@ async function getPayment(paymentId) {
   return r.data;
 }
 
-// ✅ Extrai IDs numéricos (resource pode ser "1406..." ou URL)
 function extractNumericId(value) {
   if (!value) return null;
   const s = String(value).trim();
@@ -214,7 +208,6 @@ function extractNumericId(value) {
   return m ? m[1] : null;
 }
 
-// ✅ Merchant order (Mercado Livre) precisa ser consultada pra achar paymentId
 async function getMerchantOrder(merchantOrderId) {
   const r = await axios.get(
     `https://api.mercadolibre.com/merchant_orders/${merchantOrderId}`,
@@ -223,14 +216,13 @@ async function getMerchantOrder(merchantOrderId) {
   return r.data;
 }
 
-// ================== VIP AUTOMÁTICO (novo) ==================
+// ================== VIP AUTOMÁTICO ==================
 async function sendVipInviteNow(userChatId) {
   const invite = await bot.createChatInviteLink(CHAT_ID_VIP, {
     member_limit: 1,
     name: `VIP-${userChatId}-${Date.now()}`
   });
 
-  // ✅ envia mensagem com botão "Entrar no VIP" (mais fácil pro usuário)
   await bot.sendMessage(
     userChatId,
     `✅ *Pagamento aprovado!*\n\n🔓 Seu acesso VIP está liberado.\nClique no botão abaixo para entrar:`,
@@ -244,10 +236,9 @@ async function sendVipInviteNow(userChatId) {
   return invite.invite_link;
 }
 
-// ================== MP WEBHOOK (libera e ENVIA AUTOMÁTICO) ==================
+// ================== MP WEBHOOK ==================
 app.post("/mp/webhook", (req, res) => {
   res.sendStatus(200);
-
   console.log("📩 MP webhook recebido:", JSON.stringify(req.body));
 
   setImmediate(async () => {
@@ -260,13 +251,11 @@ app.post("/mp/webhook", (req, res) => {
       const body = req.body || {};
       const topic = body?.topic || body?.type;
 
-      // ✅ pega paymentId de data.id, id, OU resource numérico
       let paymentId =
         body?.data?.id ||
         body?.id ||
         extractNumericId(body?.resource);
 
-      // ✅ se for merchant_order, consulta a ordem pra achar paymentId
       if ((!paymentId) && topic === "merchant_order") {
         const moId = extractNumericId(body?.resource);
         if (!moId) {
@@ -278,9 +267,8 @@ app.post("/mp/webhook", (req, res) => {
         const payments = mo?.payments || [];
         const lastPayment = payments[payments.length - 1];
 
-        if (lastPayment?.id) {
-          paymentId = String(lastPayment.id);
-        } else {
+        if (lastPayment?.id) paymentId = String(lastPayment.id);
+        else {
           console.log("⚠️ Merchant order sem payments ainda:", moId);
           return;
         }
@@ -293,7 +281,6 @@ app.post("/mp/webhook", (req, res) => {
 
       const pid = String(paymentId);
 
-      // ✅ só ignora se já foi finalizado (approved) antes
       if (isProcessed(pid)) {
         console.log("🔁 Pagamento já processado:", pid);
         return;
@@ -313,12 +300,9 @@ app.post("/mp/webhook", (req, res) => {
         ? PLANS[planId]
         : Object.values(PLANS).find(p => closeMoney(p.price, amount));
 
-      // ✅ SÓ finaliza quando approved e valores batem
       if (status === "approved" && userId && plan && closeMoney(expected ?? plan.price, amount)) {
-        // libera no DB
         setAuthorized(userId);
 
-        // ✅ TRAVA: se já enviou VIP pro usuário, não manda de novo
         if (hasVipSent(userId)) {
           console.log("🔁 VIP já enviado para userId:", userId);
           markProcessed(pid);
@@ -326,27 +310,23 @@ app.post("/mp/webhook", (req, res) => {
           return;
         }
 
-        // ✅ marca como "enviando" e salva IMEDIATO para evitar corrida
         markVipSent(userId);
         markProcessed(pid);
         await db.write();
 
-        // ✅ envia automaticamente o VIP
         try {
           await sendVipInviteNow(userId);
-          consume(userId); // marca como consumido porque já mandou o link
+          consume(userId);
           await db.write();
         } catch (e) {
           console.error("❌ Falha ao enviar VIP automático:", e?.response?.data || e.message);
-          // fallback: deixa "authorized" e libera /vip depois
           unmarkVipSent(userId);
           await db.write();
         }
 
         console.log("🎉 VIP LIBERADO + enviado automático para userId:", userId);
       } else {
-        console.log("🟡 Não liberou (ainda não aprovado ou não bateu):", { status, userId, amount, planId, expected });
-        // ❌ NÃO marca processado aqui (pra não bloquear quando virar approved)
+        console.log("🟡 Não liberou:", { status, userId, amount, planId, expected });
       }
 
     } catch (e) {
@@ -355,27 +335,23 @@ app.post("/mp/webhook", (req, res) => {
   });
 });
 
-// ================== BLOQUEIO de mídia (reforçado por tipo) ==================
+// ================== BLOQUEIO DE MÍDIA ==================
 async function blockMedia(msg) {
   const chatId = msg.chat.id;
 
-  // se vier /start ou /vip como texto, não bloquear
   const text = msg.text || "";
   if (/^\/start/i.test(text) || /^\/vip/i.test(text)) return;
 
-  // tenta apagar a mensagem proibida
   try {
     await bot.deleteMessage(chatId, msg.message_id);
-  } catch (e) {
-    // em grupo/canal pode falhar se o bot não for admin
-  }
+  } catch (e) {}
 
   await bot.sendMessage(
     chatId,
     "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barStartVip() }
+      reply_markup: { inline_keyboard: barStartPayVip() }
     }
   );
 }
@@ -391,7 +367,18 @@ bot.on("sticker", blockMedia);
 bot.on("location", blockMedia);
 bot.on("contact", blockMedia);
 
-// ================== Fluxo reaproveitável do START ==================
+// ================== FLOW: PAGAMENTO (SEM VÍDEO) ==================
+async function runPaymentFlow(chatId) {
+  const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
+  const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
+
+  await bot.sendMessage(chatId, "🔥 *Escolha seu plano abaixo:*", {
+    parse_mode: "Markdown",
+    ...salesKeyboard(mensalUrl, vitalicioUrl)
+  });
+}
+
+// ================== FLOW: START (COM VÍDEO + PAGAMENTO) ==================
 async function runStartFlow(chatId) {
   await sendStartMedia(chatId);
 
@@ -399,11 +386,10 @@ async function runStartFlow(chatId) {
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
   await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", salesKeyboard(mensalUrl, vitalicioUrl));
-
   console.log("📨 START flow enviado para:", chatId);
 }
 
-// ================== Fluxo reaproveitável do VIP ==================
+// ================== FLOW: VIP (FALLBACK) ==================
 async function runVipFlow(userChatId) {
   await db.read();
   db.data ||= { processed_payments: [], vip_access: [] };
@@ -415,11 +401,14 @@ async function runVipFlow(userChatId) {
       userChatId,
       "⚠️ Você ainda não está liberado.\n\n" +
       "✅ Passo a passo:\n" +
-      "1) Envie /start\n" +
+      "1) Clique no botão *🔥 PAGAMENTO 🔥*\n" +
       "2) Faça o pagamento\n" +
-      "3) Aguarde a aprovação (o link pode chegar automático)\n\n" +
+      "3) Aguarde a aprovação (o link aparecerá automaticamente)\n\n" +
       "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
-      { reply_markup: { inline_keyboard: barStartVip() } }
+      {
+        parse_mode: "Markdown",
+        reply_markup: { inline_keyboard: barStartPayVip() }
+      }
     );
   }
 
@@ -436,7 +425,7 @@ async function runVipFlow(userChatId) {
     `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barStartVip() }
+      reply_markup: { inline_keyboard: barStartPayVip() }
     }
   );
 
@@ -451,8 +440,8 @@ bot.onText(/\/start/i, async (msg) => {
     await runStartFlow(chatId);
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
-    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente em instantes.", {
-      reply_markup: { inline_keyboard: barStartVip() }
+    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.", {
+      reply_markup: { inline_keyboard: barStartPayVip() }
     });
   }
 });
@@ -468,21 +457,19 @@ bot.onText(/\/vip/i, async (msg) => {
     await bot.sendMessage(
       userChatId,
       "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
-      { reply_markup: { inline_keyboard: barStartVip() } }
+      { reply_markup: { inline_keyboard: barStartPayVip() } }
     );
   }
 });
 
-// ================== Botões Start/VIP (callback) ==================
+// ================== CALLBACKS ==================
 bot.on("callback_query", async (query) => {
   const chatId = query.message?.chat?.id;
   const data = query.data;
 
   if (!chatId) return;
 
-  try {
-    await bot.answerCallbackQuery(query.id);
-  } catch (_) {}
+  try { await bot.answerCallbackQuery(query.id); } catch (_) {}
 
   if (data === "DO_START") {
     try {
@@ -490,7 +477,18 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_START:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
-        reply_markup: { inline_keyboard: barStartVip() }
+        reply_markup: { inline_keyboard: barStartPayVip() }
+      });
+    }
+  }
+
+  if (data === "DO_PAY") {
+    try {
+      await runPaymentFlow(chatId);
+    } catch (e) {
+      console.error("❌ Erro DO_PAY:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao abrir pagamento. Tente novamente.", {
+        reply_markup: { inline_keyboard: barStartPayVip() }
       });
     }
   }
@@ -501,7 +499,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_VIP:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao gerar VIP. Tente novamente.", {
-        reply_markup: { inline_keyboard: barStartVip() }
+        reply_markup: { inline_keyboard: barStartPayVip() }
       });
     }
   }
