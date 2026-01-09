@@ -131,6 +131,18 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   return { reply_markup: { inline_keyboard: rows } };
 }
 
+// ✅ teclado do VIP automático (botão "Entrar no VIP")
+function vipAccessKeyboard(inviteLink) {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🔓 Entrar no VIP", url: inviteLink }],
+        ...barStartVip()
+      ]
+    }
+  };
+}
+
 // ================== MERCADO PAGO ==================
 async function criarPreferencia(plan, chatId) {
   const payload = {
@@ -201,16 +213,18 @@ async function sendVipInviteNow(userChatId) {
     name: `VIP-${userChatId}-${Date.now()}`
   });
 
+  // ✅ envia mensagem com botão "Entrar no VIP" (mais fácil pro usuário)
   await bot.sendMessage(
     userChatId,
-    `✅ *Pagamento aprovado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
+    `✅ *Pagamento aprovado!*\n\n🔓 Seu acesso VIP está liberado.\nClique no botão abaixo para entrar:`,
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barStartVip() }
+      ...vipAccessKeyboard(invite.invite_link)
     }
   );
 
   console.log("🚀 AUTO VIP -> link 1 uso enviado para:", userChatId);
+  return invite.invite_link;
 }
 
 // ================== MP WEBHOOK (libera e ENVIA AUTOMÁTICO) ==================
@@ -282,7 +296,7 @@ app.post("/mp/webhook", (req, res) => {
         ? PLANS[planId]
         : Object.values(PLANS).find(p => closeMoney(p.price, amount));
 
-      // ✅ SÓ finaliza quando approved
+      // ✅ SÓ finaliza quando approved e valores batem
       if (status === "approved" && userId && plan && closeMoney(expected ?? plan.price, amount)) {
         // libera no DB
         setAuthorized(userId);
