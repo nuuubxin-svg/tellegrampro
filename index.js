@@ -176,25 +176,74 @@ async function getPayment(paymentId) {
   return r.data;
 }
 
+// ✅ NOVO: extrai IDs numéricos (resource pode ser "1406..." ou URL)
+function extractNumericId(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (/^\d+$/.test(s)) return s;
+  const m = s.match(/\/(\d+)(\?.*)?$/);
+  return m ? m[1] : null;
+}
+
+// ✅ NOVO: merchant order (Mercado Livre) precisa ser consultada pra achar paymentId
+async function getMerchantOrder(merchantOrderId) {
+  const r = await axios.get(
+    `https://api.mercadolibre.com/merchant_orders/${merchantOrderId}`,
+    { headers: { Authorization: `Bearer ${MP_ACCESS_TOKEN}` } }
+  );
+  return r.data;
+}
+
 // ================== MP WEBHOOK (só libera no DB) ==================
 app.post("/mp/webhook", (req, res) => {
   res.sendStatus(200);
 
-  const paymentId = req.body?.data?.id || req.body?.id;
-
   console.log("📩 MP webhook recebido:", JSON.stringify(req.body));
-
-  if (!paymentId) {
-    console.log("⚠️ MP webhook sem paymentId (ignorado)");
-    return;
-  }
 
   setImmediate(async () => {
     try {
       await db.read();
       db.data ||= { processed_payments: [], vip_access: [] };
+      db.data.processed_payments ||= [];
+      db.data.vip_access ||= [];
+
+      const body = req.body || {};
+      const topic = body?.topic || body?.type;
+
+      // ✅ pega paymentId de data.id, id, OU resource numérico
+      let paymentId =
+        body?.data?.id ||
+        body?.id ||
+        extractNumericId(body?.resource);
+
+      // ✅ se for merchant_order, consulta a ordem pra achar paymentId
+      if ((!paymentId) && topic === "merchant_order") {
+        const moId = extractNumericId(body?.resource);
+        if (!moId) {
+          console.log("⚠️ MP merchant_order sem id extraível (ignorado)");
+          return;
+        }
+
+        const mo = await getMerchantOrder(moId);
+        const payments = mo?.payments || [];
+        const lastPayment = payments[payments.length - 1];
+
+        if (lastPayment?.id) {
+          paymentId = String(lastPayment.id);
+        } else {
+          console.log("⚠️ Merchant order sem payments ainda:", moId);
+          return;
+        }
+      }
+
+      if (!paymentId) {
+        console.log("⚠️ MP webhook sem paymentId (ignorado)");
+        return;
+      }
 
       const pid = String(paymentId);
+
+      // ✅ só ignora se já foi finalizado (approved) antes
       if (isProcessed(pid)) {
         console.log("🔁 Pagamento já processado:", pid);
         return;
@@ -210,18 +259,20 @@ app.post("/mp/webhook", (req, res) => {
 
       console.log("✅ Payment details:", { pid, status, userId, amount, planId, expected });
 
-      markProcessed(pid);
-
       const plan = planId
         ? PLANS[planId]
         : Object.values(PLANS).find(p => closeMoney(p.price, amount));
 
+      // ✅ SÓ marca como processado quando approved
       if (status === "approved" && userId && plan && closeMoney(expected ?? plan.price, amount)) {
         setAuthorized(userId);
+        markProcessed(pid);
+
         console.log("🎉 VIP LIBERADO NO SISTEMA para userId:", userId);
         console.log("👉 Usuário deve enviar /vip");
       } else {
-        console.log("🟡 Não liberou (status/plano/valor não bateu):", { status, userId, amount, planId, expected });
+        console.log("🟡 Não liberou (ainda não aprovado ou não bateu):", { status, userId, amount, planId, expected });
+        // ❌ NÃO marca processado aqui (pra não bloquear quando virar approved)
       }
 
       await db.write();
