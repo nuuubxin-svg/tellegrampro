@@ -25,6 +25,9 @@ if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
 const adapter = new JSONFile("db.json");
 const db = new Low(adapter, null);
 
+// ✅ lock em memória para evitar corrida de webhooks simultâneos
+const processingPayments = new Set();
+
 async function initDB() {
   await db.read();
   db.data ||= { processed_payments: [], vip_access: [] };
@@ -39,11 +42,24 @@ function isProcessed(paymentId) {
 function markProcessed(paymentId) {
   db.data.processed_payments.push(String(paymentId));
 }
+
+// ✅ NÃO resetar vip_sent ao autorizar novamente (idempotência real)
 function setAuthorized(userId) {
   const uid = String(userId);
+
+  // preserva vip_sent caso já tenha sido enviado antes
+  const existing = db.data.vip_access.find(v => v.userId === uid);
+  const vipSent = existing?.vip_sent === true;
+
   db.data.vip_access = db.data.vip_access.filter(v => v.userId !== uid);
-  db.data.vip_access.push({ userId: uid, status: "authorized", ts: Date.now(), vip_sent: false });
+  db.data.vip_access.push({
+    userId: uid,
+    status: "authorized",
+    ts: Date.now(),
+    vip_sent: vipSent
+  });
 }
+
 function getStatus(userId) {
   const uid = String(userId);
   return db.data.vip_access.find(v => v.userId === uid)?.status || null;
@@ -267,6 +283,8 @@ app.post("/mp/webhook", (req, res) => {
   console.log("📩 MP webhook recebido:", JSON.stringify(req.body));
 
   setImmediate(async () => {
+    let lockedPid = null;
+
     try {
       await db.read();
       db.data ||= { processed_payments: [], vip_access: [] };
@@ -296,6 +314,14 @@ app.post("/mp/webhook", (req, res) => {
       if (!paymentId) return console.log("⚠️ MP webhook sem paymentId (ignorado)");
 
       const pid = String(paymentId);
+
+      // ✅ lock para evitar 2 execuções simultâneas do mesmo payment
+      if (processingPayments.has(pid)) {
+        return console.log("⏳ Pagamento em processamento (lock):", pid);
+      }
+      processingPayments.add(pid);
+      lockedPid = pid;
+
       if (isProcessed(pid)) return console.log("🔁 Pagamento já processado:", pid);
 
       const payment = await getPayment(pid);
@@ -342,6 +368,8 @@ app.post("/mp/webhook", (req, res) => {
       }
     } catch (e) {
       console.error("❌ ERRO no /mp/webhook:", e?.response?.data || e.message);
+    } finally {
+      if (lockedPid) processingPayments.delete(lockedPid);
     }
   });
 });
