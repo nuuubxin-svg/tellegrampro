@@ -118,6 +118,41 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   return { reply_markup: { inline_keyboard: rows } };
 }
 
+// ================== [ADICIONADO] BARRINHA (1 botão flutuante) ==================
+function startBarKeyboard() {
+  return {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "▶️ Start", callback_data: "DO_START" }]
+      ]
+    }
+  };
+}
+
+// ================== [ADICIONADO] REMOVER TECLADO (ReplyKeyboard) ==================
+function removeReplyKeyboard() {
+  return { reply_markup: { remove_keyboard: true } };
+}
+
+// ================== [ADICIONADO] Fluxo do START reaproveitável (para /start e botão) ==================
+async function runStartFlow(chatId) {
+  // 1) envia o vídeo (uma vez)
+  await sendStartMedia(chatId);
+
+  // 2) cria as preferências (links)
+  const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
+  const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
+
+  // 3) envia botões (igual seu print)
+  // [ALTERADO] removendo teclado junto (caso exista algum preso)
+  await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", {
+    ...salesKeyboard(mensalUrl, vitalicioUrl),
+    ...removeReplyKeyboard(),
+  });
+
+  console.log("📨 START flow enviado para:", chatId);
+}
+
 // ================== MERCADO PAGO ==================
 async function criarPreferencia(plan, chatId) {
   const payload = {
@@ -218,25 +253,89 @@ app.post("/mp/webhook", (req, res) => {
   });
 });
 
+// ================== [ADICIONADO] BLOQUEIO de câmera/áudio/imagens ==================
+// Observação: não dá pra remover os botões do Telegram (câmera/mic),
+// mas dá pra bloquear o envio na prática (apagando + avisando).
+bot.on("message", async (msg) => {
+  const chatId = msg.chat.id;
+
+  // não interferir nos comandos existentes
+  const text = msg.text || "";
+  if (text.startsWith("/start") || text.startsWith("/vip")) return;
+
+  const isBlocked =
+    !!msg.voice ||
+    !!msg.audio ||
+    !!msg.photo ||
+    !!msg.video ||
+    !!msg.video_note ||
+    !!msg.document ||
+    !!msg.animation ||
+    !!msg.sticker;
+
+  if (!isBlocked) return;
+
+  // tenta apagar a mensagem proibida
+  try {
+    await bot.deleteMessage(chatId, msg.message_id);
+  } catch (e) {
+    // pode falhar em alguns contextos (permissões), mas segue o fluxo
+  }
+
+  // avisa e mostra a barrinha flutuante
+  await bot.sendMessage(
+    chatId,
+    "🚫 Não aceito câmera, áudio ou imagens aqui.\n✅ Envie apenas *texto* ou toque no botão abaixo:",
+    {
+      parse_mode: "Markdown",
+      ...startBarKeyboard(),
+      ...removeReplyKeyboard(),
+    }
+  );
+});
+
 // ================== /start ==================
 bot.onText(/\/start/i, async (msg) => {
   const chatId = msg.chat.id;
 
   try {
-    // 1) envia o vídeo (uma vez)
-    await sendStartMedia(chatId);
+    // [ADICIONADO] garante remoção de teclado e mostra barrinha (1 botão)
+    await bot.sendMessage(chatId, "✅ Teclado removido. Use o botão abaixo para iniciar:", {
+      ...startBarKeyboard(),
+      ...removeReplyKeyboard(),
+    });
 
-    // 2) cria as preferências (links)
-    const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
-    const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
-
-    // 3) envia botões (igual seu print)
-    await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", salesKeyboard(mensalUrl, vitalicioUrl));
-
-    console.log("📨 /start enviado para:", chatId);
+    // [ALTERADO] usa o fluxo reaproveitável
+    await runStartFlow(chatId);
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
-    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente em instantes.");
+    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente em instantes.", {
+      ...removeReplyKeyboard(),
+    });
+  }
+});
+
+// ================== [ADICIONADO] Clique no botão flutuante ▶️ Start ==================
+bot.on("callback_query", async (query) => {
+  const chatId = query.message?.chat?.id;
+  const data = query.data;
+
+  if (!chatId) return;
+
+  if (data === "DO_START") {
+    try {
+      // encerra o "loading" do botão
+      await bot.answerCallbackQuery(query.id);
+
+      // dispara exatamente o mesmo fluxo do /start
+      await runStartFlow(chatId);
+    } catch (e) {
+      console.error("❌ Erro no botão DO_START:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
+        ...startBarKeyboard(),
+        ...removeReplyKeyboard(),
+      });
+    }
   }
 });
 
@@ -259,7 +358,11 @@ bot.onText(/\/vip/i, async (msg) => {
         "1) Envie /start\n" +
         "2) Faça o pagamento\n" +
         "3) Depois volte e envie /vip\n\n" +
-        "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente."
+        "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
+        {
+          ...startBarKeyboard(),
+          ...removeReplyKeyboard(),
+        }
       );
     }
 
@@ -275,7 +378,7 @@ bot.onText(/\/vip/i, async (msg) => {
     await bot.sendMessage(
       userChatId,
       `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
-      { parse_mode: "Markdown" }
+      { parse_mode: "Markdown", ...removeReplyKeyboard() }
     );
 
     console.log("🚀 /vip -> link 1 uso enviado para:", userChatId);
@@ -283,7 +386,8 @@ bot.onText(/\/vip/i, async (msg) => {
     console.error("❌ ERRO no /vip:", e?.response?.data || e.message);
     await bot.sendMessage(
       userChatId,
-      "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link."
+      "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
+      { ...removeReplyKeyboard() }
     );
   }
 });
