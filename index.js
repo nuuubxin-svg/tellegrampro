@@ -137,7 +137,6 @@ function vipAccessKeyboard(inviteLink) {
     reply_markup: {
       inline_keyboard: [
         [{ text: "🔓 Entrar no VIP", url: inviteLink }],
-        ...barStartVip()
       ]
     }
   };
