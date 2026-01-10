@@ -11,24 +11,20 @@ const path = require("path");
 // ================== ENV ==================
 const TOKEN = process.env.TOKEN;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-let PUBLIC_URL = process.env.PUBLIC_URL; // ex: https://tellegrampro.onrender.com
-const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP || "");
+const PUBLIC_URL = process.env.PUBLIC_URL; // ex: https://telegramvendas.onrender.com
+const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP); // ex: -1003676681893
 const PORT = Number(process.env.PORT || 3000);
-const PREVIAS_LINK = process.env.PREVIAS_LINK || "https://t.me/seu_canal_previas";
+const PREVIAS_LINK = process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
 
 if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
-  console.error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no Render.");
-  process.exit(1);
+  throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env / Render");
 }
-
-// remove barra final se existir
-PUBLIC_URL = PUBLIC_URL.replace(/\/+$/, "");
 
 // ================== DB ==================
 const adapter = new JSONFile("db.json");
 const db = new Low(adapter, null);
 
-// lock em memória para evitar corrida de webhooks simultâneos
+// ✅ lock em memória para evitar corrida de webhooks simultâneos
 const processingPayments = new Set();
 
 async function initDB() {
@@ -47,7 +43,7 @@ function markProcessed(paymentId) {
   db.data.processed_payments.push(String(paymentId));
 }
 
-// NÃO resetar vip_sent ao autorizar novamente (idempotência real)
+// ✅ NÃO resetar vip_sent ao autorizar novamente (idempotência real)
 function setAuthorized(userId) {
   const uid = String(userId);
   const existing = db.data.vip_access.find((v) => v.userId === uid);
@@ -73,7 +69,7 @@ function consume(userId) {
   if (row) row.status = "consumed";
 }
 
-// trava anti-duplicidade do VIP automático
+// ✅ trava anti-duplicidade do VIP automático
 function hasVipSent(userId) {
   const uid = String(userId);
   const row = db.data.vip_access.find((v) => v.userId === uid);
@@ -111,17 +107,26 @@ app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
 app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 
 // ================== BOT (webhook) ==================
-const bot = new TelegramBot(TOKEN, { polling: false });
+// ✅ correção: no modo webhook, use webHook:true
+const bot = new TelegramBot(TOKEN, { webHook: true });
 
-// ✅ Endpoint do webhook do Telegram (POST)
+// ✅ log para confirmar que mensagens chegam (remova depois se quiser)
+bot.on("message", (msg) => {
+  const chatId = msg?.chat?.id;
+  const text = msg?.text;
+  if (text) console.log(`📨 MSG recebida chat=${chatId}:`, text);
+});
+
+// Endpoint do webhook do Telegram
 app.post("/telegram", async (req, res) => {
-  // responde imediatamente para o Telegram
   res.sendStatus(200);
 
-  // LOG para confirmar que o Telegram está chegando
-  console.log("📩 UPDATE DO TELEGRAM:", JSON.stringify(req.body));
-
   try {
+    // log leve do update (evita log gigante)
+    const u = req.body || {};
+    const t = u?.message?.text || u?.callback_query?.data || "";
+    console.log("📩 Update do Telegram:", t);
+
     await bot.processUpdate(req.body);
   } catch (e) {
     console.error("❌ processUpdate:", e?.message || e);
@@ -130,7 +135,7 @@ app.post("/telegram", async (req, res) => {
 
 // ================== TECLADOS ==================
 function barGiftOnlyBig() {
-  return [[{ text: "🎁 ver opções 🎁", callback_data: "DO_GIFT" }]];
+  return [[{ text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" }]];
 }
 
 function barVipBlocked() {
@@ -142,18 +147,18 @@ function barVipBlocked() {
 
 function salesKeyboard(mensalUrl, vitalicioUrl) {
   const rows = [
-    [{ text: "📌 Informações / Prévia", url: PREVIAS_LINK }],
+    [{ text: "🎬🔥 PRÉVIAS 🔥🎬", url: PREVIAS_LINK }],
   ];
-  if (mensalUrl) rows.push([{ text: "💳 9,90 / MÊS", url: mensalUrl }]);
-  if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO", url: vitalicioUrl }]);
+  if (mensalUrl) rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
+  if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
   rows.push(...barGiftOnlyBig());
   return { reply_markup: { inline_keyboard: rows } };
 }
 
 function paymentOnlyKeyboard(mensalUrl, vitalicioUrl) {
   const rows = [];
-  if (mensalUrl) rows.push([{ text: "💳 9,90 / MÊS", url: mensalUrl }]);
-  if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO", url: vitalicioUrl }]);
+  if (mensalUrl) rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
+  if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
   return { reply_markup: { inline_keyboard: rows } };
 }
 
@@ -165,35 +170,39 @@ function vipAccessKeyboard(inviteLink) {
   };
 }
 
-// ================== START MEDIA ==================
+// ================== START VIDEO ==================
 async function sendStartMedia(chatId, mensalUrl, vitalicioUrl) {
   const videoPath = path.join(__dirname, "assets", "start.mp4");
-
-  const caption = `✅ <b>Bem-vindo!</b>
-
-Assine um plano e receba acesso ao grupo VIP automaticamente após a aprovação do pagamento.
-
-<b>Escolha um plano abaixo:</b>`;
-
-  // Se tiver vídeo, envia. Se não tiver, manda texto.
-  if (fs.existsSync(videoPath)) {
-    try {
-      await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-        caption,
-        parse_mode: "HTML",
-        ...salesKeyboard(mensalUrl, vitalicioUrl),
-      });
-      console.log("✅ start.mp4 enviado para:", chatId);
-      return;
-    } catch (e) {
-      console.error("❌ Erro ao enviar start.mp4:", e?.message || e);
-    }
+  if (!fs.existsSync(videoPath)) {
+    console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
+    return;
   }
 
-  await bot.sendMessage(chatId, caption, {
-    parse_mode: "HTML",
-    ...salesKeyboard(mensalUrl, vitalicioUrl),
-  });
+  const startCaption = `🔥 <b>TENHA ACESSO AOS MELHORES CONTEÚDOS</b>
+
+<b>Sobre nosso canal VIP:</b> 👇🏻
+⭐️ 1K de mídias atualizadas todos os dias.
+⭐️ Acesso imediato.
+⭐️ Conteúdo organizado por # e por lista.
+⭐️ 100% anônimo (ninguém saberá que você faz parte).
+⭐️ Mais de 10k de mídias já postadas.
+⭐️ Todo conteúdo compartilhado é ⁺¹⁸
+
+🚨 <b>Devo confiar no grupo?</b>
+⭐️ Temos mais de 1.000 membros no VIP!
+
+<b>ESCOLHA SEU PLANO E TENHA ACESSO IMEDIATO!</b> ⬇️ 🔥`;
+
+  try {
+    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
+      caption: startCaption,
+      parse_mode: "HTML",
+      ...salesKeyboard(mensalUrl, vitalicioUrl),
+    });
+    console.log("✅ start.mp4 enviado para:", chatId);
+  } catch (e) {
+    console.error("❌ Erro ao enviar start.mp4:", e.message);
+  }
 }
 
 // ================== MERCADO PAGO ==================
@@ -262,7 +271,10 @@ async function sendVipInviteNow(userChatId) {
 
   await bot.sendMessage(
     userChatId,
-    `✅ *Pagamento aprovado!*\n\n🔓 Seu acesso VIP está liberado.\nClique no botão abaixo para entrar:`,
+    `✅ Pagamento aprovado!
+
+🔓 Seu acesso VIP está liberado.
+Clique no botão abaixo para entrar:`,
     {
       parse_mode: "Markdown",
       ...vipAccessKeyboard(invite.invite_link),
@@ -311,6 +323,7 @@ app.post("/mp/webhook", (req, res) => {
       if (processingPayments.has(pid)) {
         return console.log("⏳ Pagamento em processamento (lock):", pid);
       }
+
       processingPayments.add(pid);
       lockedPid = pid;
 
@@ -371,41 +384,86 @@ app.post("/mp/webhook", (req, res) => {
   });
 });
 
-// ================== FLOWS ==================
+// ================== BLOQUEIO DE MÍDIA ==================
+async function blockMedia(msg) {
+  const chatId = msg.chat.id;
+  const text = msg.text || "";
+  if (/^\/start/i.test(text) || /^\/vip/i.test(text)) return;
+
+  try {
+    await bot.deleteMessage(chatId, msg.message_id);
+  } catch (_) {}
+
+  await bot.sendMessage(
+    chatId,
+    "🚫 Não aceito áudio, fotos, vídeos ou arquivos aqui.\n✅ Envie apenas texto ou use os botões:",
+    {
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: barGiftOnlyBig() },
+    }
+  );
+}
+
+bot.on("photo", blockMedia);
+bot.on("voice", blockMedia);
+bot.on("audio", blockMedia);
+bot.on("video", blockMedia);
+bot.on("video_note", blockMedia);
+bot.on("document", blockMedia);
+bot.on("animation", blockMedia);
+bot.on("sticker", blockMedia);
+bot.on("location", blockMedia);
+bot.on("contact", blockMedia);
+
+// ================== FLOW START ==================
 async function runStartFlow(chatId) {
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
+
   await sendStartMedia(chatId, mensalUrl, vitalicioUrl);
   console.log("📨 START flow enviado para:", chatId);
 }
 
+// ================== FLOW 🎁 PRESENTE ==================
 async function runGiftFlow(chatId) {
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
   const videoPath = path.join(__dirname, "assets", "pagamento.mp4");
-  const caption = `✅ <b>Conteúdo disponível</b>\n\nEscolha um plano para continuar:`;
 
-  if (fs.existsSync(videoPath)) {
-    try {
-      await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-        caption,
-        parse_mode: "HTML",
-        ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl),
-      });
-      console.log("✅ pagamento.mp4 enviado para:", chatId);
-      return;
-    } catch (e) {
-      console.error("❌ Erro ao enviar pagamento.mp4:", e?.message || e);
-    }
+  const captionText = `🔥 <b>Blogueira de Salvador</b> 🔥
+
+Essa semana, uma influenciadora de Salvador está dando o que falar após vídeos íntimos vazarem na internet.
+✅ São mais de <b>8 vídeos exclusivos</b> circulando.
+
+Quer saber mais? 👇`;
+
+  if (!fs.existsSync(videoPath)) {
+    console.log("⚠️ pagamento.mp4 NÃO encontrado:", videoPath);
+    await bot.sendMessage(chatId, captionText, {
+      parse_mode: "HTML",
+      ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl),
+    });
+    return;
   }
 
-  await bot.sendMessage(chatId, caption, {
-    parse_mode: "HTML",
-    ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl),
-  });
+  try {
+    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
+      caption: captionText,
+      parse_mode: "HTML",
+      ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl),
+    });
+    console.log("✅ pagamento.mp4 enviado para:", chatId);
+  } catch (e) {
+    console.error("❌ Erro ao enviar pagamento.mp4:", e.message);
+    await bot.sendMessage(chatId, captionText, {
+      parse_mode: "HTML",
+      ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl),
+    });
+  }
 }
 
+// ================== FLOW VIP ==================
 async function runVipFlow(userChatId) {
   await db.read();
   db.data ||= { processed_payments: [], vip_access: [] };
@@ -417,10 +475,10 @@ async function runVipFlow(userChatId) {
       userChatId,
       "⚠️ Você ainda não está liberado.\n\n" +
         "✅ Passo a passo:\n" +
-        "1) Clique em /start\n" +
+        "1) Clique no botão ▶️ Start\n" +
         "2) Faça o pagamento\n" +
-        "3) Aguarde a aprovação (o link chega automaticamente)\n\n" +
-        "Se você já pagou, aguarde 1–2 minutos e tente /vip novamente.",
+        "3) Aguarde a aprovação (o link aparecerá automaticamente)\n\n" +
+        "Se você já pagou e ainda não liberou, aguarde 1–2 minutos e tente /vip novamente.",
       {
         parse_mode: "Markdown",
         reply_markup: { inline_keyboard: barVipBlocked() },
@@ -438,7 +496,10 @@ async function runVipFlow(userChatId) {
 
   await bot.sendMessage(
     userChatId,
-    `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
+    `✅ Acesso liberado!
+
+🔓 Link VIP (1 uso):
+${invite.invite_link}`,
     {
       parse_mode: "Markdown",
       reply_markup: { inline_keyboard: barGiftOnlyBig() },
@@ -455,7 +516,7 @@ bot.onText(/\/start/i, async (msg) => {
     await runStartFlow(chatId);
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
-    await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
+    await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.", {
       reply_markup: { inline_keyboard: barGiftOnlyBig() },
     });
   }
@@ -470,7 +531,7 @@ bot.onText(/\/vip/i, async (msg) => {
     console.error("❌ ERRO no /vip:", e?.response?.data || e.message);
     await bot.sendMessage(
       userChatId,
-      "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no grupo VIP e tem permissão para criar convites.",
+      "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão para criar links de convite.",
       { reply_markup: { inline_keyboard: barGiftOnlyBig() } }
     );
   }
@@ -487,15 +548,36 @@ bot.on("callback_query", async (query) => {
   } catch (_) {}
 
   if (data === "DO_START") {
-    try { await runStartFlow(chatId); } catch (e) { console.error(e); }
+    try {
+      await runStartFlow(chatId);
+    } catch (e) {
+      console.error("❌ Erro DO_START:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
+        reply_markup: { inline_keyboard: barGiftOnlyBig() },
+      });
+    }
   }
 
   if (data === "DO_GIFT") {
-    try { await runGiftFlow(chatId); } catch (e) { console.error(e); }
+    try {
+      await runGiftFlow(chatId);
+    } catch (e) {
+      console.error("❌ Erro DO_GIFT:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao abrir o presente. Tente novamente.", {
+        reply_markup: { inline_keyboard: barGiftOnlyBig() },
+      });
+    }
   }
 
   if (data === "DO_VIP") {
-    try { await runVipFlow(chatId); } catch (e) { console.error(e); }
+    try {
+      await runVipFlow(chatId);
+    } catch (e) {
+      console.error("❌ Erro DO_VIP:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao gerar VIP. Tente novamente.", {
+        reply_markup: { inline_keyboard: barGiftOnlyBig() },
+      });
+    }
   }
 });
 
@@ -507,14 +589,9 @@ bot.on("callback_query", async (query) => {
     console.log(`🌐 Server rodando na porta ${PORT}`);
 
     const telegramWebhookUrl = `${PUBLIC_URL}/telegram`;
+    await bot.setWebHook(telegramWebhookUrl);
 
-    try {
-      await bot.setWebHook(telegramWebhookUrl, { drop_pending_updates: true });
-      console.log("✅ Telegram webhook:", telegramWebhookUrl);
-    } catch (e) {
-      console.error("❌ Falha ao setar webhook:", e?.message || e);
-    }
-
+    console.log("✅ Telegram webhook:", telegramWebhookUrl);
     console.log("✅ MP webhook:", `${PUBLIC_URL}/mp/webhook`);
   });
 })();
