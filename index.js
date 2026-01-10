@@ -22,10 +22,7 @@ if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
 }
 
 // ================== START CAPTION (ALTERAÇÃO) ==================
-// ⚠️ Coloque aqui a legenda desejada (apenas conteúdo legal/autorizado).
-// Se a legenda for muito grande, o Telegram pode cortar (limite de caption).
-const START_VIDEO_CAPTION =
-`🔥 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗔𝗢𝗦 𝗠𝗘𝗟𝗛𝗢𝗥𝗘𝗦 𝗖𝗢𝗡𝗧𝗘𝗨́𝗗𝗢𝗦 𝗗𝗘 𝗙𝗔𝗠𝗢𝗦𝗔𝗦 𝗘 𝗩𝗔𝗭𝗔𝗗𝗢𝗦 𝗗𝗔 𝗜𝗡𝗧𝗘𝗥𝗡𝗘𝗧!!
+// 🔥 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗔𝗢𝗦 𝗠𝗘𝗟𝗛𝗢𝗥𝗘𝗦 𝗖𝗢𝗡𝗧𝗘𝗨́𝗗𝗢𝗦 𝗗𝗘 𝗙𝗔𝗠𝗢𝗦𝗔𝗦 𝗘 𝗩𝗔𝗭𝗔𝗗𝗢𝗦 𝗗𝗔 𝗜𝗡𝗧𝗘𝗥𝗡𝗘𝗧!!
  𝗦𝗼𝗯𝗿𝗲 𝗻𝗼𝘀𝘀𝗼 𝗰𝗮𝗻𝗮𝗹 𝗩𝗜𝗣:👇🏻 
 ⭐️1K de mídias atualizadas todos os dias. ⭐️Acesso imediato! 
 ⭐️Conteúdo organizado por # e por lista. 
