@@ -25,7 +25,17 @@ if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
 // ⚠️ Coloque aqui a legenda desejada (apenas conteúdo legal/autorizado).
 // Se a legenda for muito grande, o Telegram pode cortar (limite de caption).
 const START_VIDEO_CAPTION =
-`🔥 SUA LEGENDA AQUI 🔥`;
+`🔥 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗔𝗢𝗦 𝗠𝗘𝗟𝗛𝗢𝗥𝗘𝗦 𝗖𝗢𝗡𝗧𝗘𝗨́𝗗𝗢𝗦 𝗗𝗘 𝗙𝗔𝗠𝗢𝗦𝗔𝗦 𝗘 𝗩𝗔𝗭𝗔𝗗𝗢𝗦 𝗗𝗔 𝗜𝗡𝗧𝗘𝗥𝗡𝗘𝗧!!
+ 𝗦𝗼𝗯𝗿𝗲 𝗻𝗼𝘀𝘀𝗼 𝗰𝗮𝗻𝗮𝗹 𝗩𝗜𝗣:👇🏻 
+⭐️1K de mídias atualizadas todos os dias. ⭐️Acesso imediato! 
+⭐️Conteúdo organizado por # e por lista. 
+⭐️100% anônimo, ninguém saberá que você faz parte. 
+⭐️Mais de 10k de mídias já postadas. 
+⭐️Todo conteúdo compartilhado são ⁺¹⁸ 
+🚨𝗗𝗲𝘃𝗼 𝗰𝗼𝗻𝗳𝗶𝗮𝗿 𝗻𝗼 𝗴𝗿𝘂𝗽𝗼? 
+⭐️Temos mais de 1.000 membros em nosso grupo VIP!! 
+𝗘𝗦𝗖𝗢𝗟𝗛𝗔 𝗦𝗘𝗨 𝗣𝗟𝗔𝗡𝗢 𝗘 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗜𝗠𝗘𝗗𝗜𝗔𝗧𝗢!! ⬇️ 🔥`;
+`;
 
 // ================== DB ==================
 const adapter = new JSONFile("db.json");
