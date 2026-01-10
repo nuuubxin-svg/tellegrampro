@@ -21,6 +21,12 @@ if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
   throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env / Render");
 }
 
+// ================== START CAPTION (ALTERAÇÃO) ==================
+// ⚠️ Coloque aqui a legenda desejada (apenas conteúdo legal/autorizado).
+// Se a legenda for muito grande, o Telegram pode cortar (limite de caption).
+const START_VIDEO_CAPTION =
+`🔥 SUA LEGENDA AQUI 🔥`;
+
 // ================== DB ==================
 const adapter = new JSONFile("db.json");
 const db = new Low(adapter, null);
@@ -130,7 +136,8 @@ async function sendStartMedia(chatId) {
 
   try {
     await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-      caption: "🔥 O queridinho do momento! 🔥"
+      // ✅ ALTERAÇÃO: legenda substituída por variável
+      caption: START_VIDEO_CAPTION
     });
     console.log("✅ start.mp4 enviado para:", chatId);
   } catch (e) {
@@ -140,22 +147,20 @@ async function sendStartMedia(chatId) {
 
 // ================== TECLADOS ==================
 
-// ✅ Barrinha do START inicial: mantém o 🎁 + VIP (não remove)
+// ✅ ALTERAÇÃO: remove VIP e deixa só o presente “esticado” (1 botão por linha)
 function barGiftVip() {
   return [
     [
-      { text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" },
-      { text: "🔓 VIP", callback_data: "DO_VIP" }
+      { text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" }
     ]
   ];
 }
 
-// ✅ Barrinha APENAS para tela de VIP bloqueado: Start + VIP
+// ✅ ALTERAÇÃO: VIP bloqueado agora só tem Start (VIP removido)
 function barVipBlocked() {
   return [
     [
-      { text: "▶️ Start", callback_data: "DO_START" },
-      { text: "🔓 VIP", callback_data: "DO_VIP" }
+      { text: "▶️ Start", callback_data: "DO_START" }
     ]
   ];
 }
@@ -168,7 +173,7 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
-  // ✅ no START inicial, mantém 🎁 + VIP
+  // ✅ no START inicial: agora só 🎁
   rows.push(...barGiftVip());
 
   return { reply_markup: { inline_keyboard: rows } };
@@ -387,7 +392,7 @@ async function blockMedia(msg) {
     "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barGiftVip() }
+      reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
     }
   );
 }
@@ -472,7 +477,7 @@ async function runVipFlow(userChatId) {
       "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
       {
         parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ Start + VIP aqui
+        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ agora só Start
       }
     );
   }
@@ -488,7 +493,7 @@ async function runVipFlow(userChatId) {
   await bot.sendMessage(
     userChatId,
     `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
-    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftVip() } }
+    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftVip() } } // ✅ agora só 🎁
   );
 
   console.log("🚀 VIP flow -> link 1 uso enviado para:", userChatId);
@@ -503,7 +508,7 @@ bot.onText(/\/start/i, async (msg) => {
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
     await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.", {
-      reply_markup: { inline_keyboard: barGiftVip() }
+      reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
     });
   }
 });
@@ -519,12 +524,12 @@ bot.onText(/\/vip/i, async (msg) => {
     await bot.sendMessage(
       userChatId,
       "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
-      { reply_markup: { inline_keyboard: barGiftVip() } }
+      { reply_markup: { inline_keyboard: barGiftVip() } } // ✅ agora só 🎁
     );
   }
 });
 
-// ================== CALLBACKS (🎁 / Start / VIP) ==================
+// ================== CALLBACKS (🎁 / Start) ==================
 bot.on("callback_query", async (query) => {
   const chatId = query.message?.chat?.id;
   const data = query.data;
@@ -539,7 +544,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_START:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() }
+        reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
       });
     }
   }
@@ -550,21 +555,12 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_GIFT:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao abrir o presente. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() }
+        reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
       });
     }
   }
 
-  if (data === "DO_VIP") {
-    try {
-      await runVipFlow(chatId);
-    } catch (e) {
-      console.error("❌ Erro DO_VIP:", e?.response?.data || e.message);
-      await bot.sendMessage(chatId, "⚠️ Erro ao gerar VIP. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() }
-      });
-    }
-  }
+  // ✅ ALTERAÇÃO: removido DO_VIP porque não existe mais botão VIP
 });
 
 // ================== START SERVER + WEBHOOK ==================
