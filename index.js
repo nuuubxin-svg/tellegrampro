@@ -119,55 +119,16 @@ app.post("/telegram", async (req, res) => {
   }
 });
 
-// ================== START VIDEO ==================
-async function sendStartMedia(chatId) {
-  const videoPath = path.join(__dirname, "assets", "start.mp4");
-
-  if (!fs.existsSync(videoPath)) {
-    console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
-    return;
-  }
-
-  // ✅ CAPTION CORRIGIDA (sem quebrar deploy)
-  const startCaption = `🔥 <b>TENHA ACESSO AOS MELHORES CONTEÚDOS DE FAMOSAS E VAZADOS DA INTERNET!!</b>
-
-<b>Sobre nosso canal VIP:</b> 👇🏻
-⭐️ 1K de mídias atualizadas todos os dias.
-⭐️ Acesso imediato!
-⭐️ Conteúdo organizado por # e por lista.
-⭐️ 100% anônimo, ninguém saberá que você faz parte.
-⭐️ Mais de 10k de mídias já postadas.
-⭐️ Todo conteúdo compartilhado é ⁺¹⁸
-
-🚨 <b>Devo confiar no grupo?</b>
-⭐️ Temos mais de 1.000 membros em nosso grupo VIP!!
-
-<b>ESCOLHA SEU PLANO E TENHA ACESSO IMEDIATO!!</b> ⬇️ 🔥`;
-
-  try {
-    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-      caption: startCaption,
-      parse_mode: "HTML"
-    });
-    console.log("✅ start.mp4 enviado para:", chatId);
-  } catch (e) {
-    console.error("❌ Erro ao enviar start.mp4:", e.message);
-  }
-}
-
 // ================== TECLADOS ==================
 
-// ✅ Barrinha do START inicial: mantém o 🎁 + VIP (não remove)
-function barGiftVip() {
+// ✅ Botão PRESENTE grande (sozinho na linha)
+function barGiftOnlyBig() {
   return [
-    [
-      { text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" },
-      { text: "🔓 VIP", callback_data: "DO_VIP" }
-    ]
+    [{ text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" }]
   ];
 }
 
-// ✅ Barrinha APENAS para tela de VIP bloqueado: Start + VIP
+// ✅ Barrinha APENAS para tela de VIP bloqueado: Start + VIP (mantém porque é fluxo do /vip)
 function barVipBlocked() {
   return [
     [
@@ -185,8 +146,8 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
-  // ✅ no START inicial, mantém 🎁 + VIP
-  rows.push(...barGiftVip());
+  // ✅ no START: só o presente grande (SEM VIP)
+  rows.push(...barGiftOnlyBig());
 
   return { reply_markup: { inline_keyboard: rows } };
 }
@@ -208,6 +169,42 @@ function vipAccessKeyboard(inviteLink) {
       ]
     }
   };
+}
+
+// ================== START VIDEO ==================
+async function sendStartMedia(chatId, mensalUrl, vitalicioUrl) {
+  const videoPath = path.join(__dirname, "assets", "start.mp4");
+
+  if (!fs.existsSync(videoPath)) {
+    console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
+    return;
+  }
+
+  const startCaption = `🔥 <b>TENHA ACESSO AOS MELHORES CONTEÚDOS DE FAMOSAS E VAZADOS DA INTERNET!!</b>
+
+<b>Sobre nosso canal VIP:</b> 👇🏻
+⭐️ 1K de mídias atualizadas todos os dias.
+⭐️ Acesso imediato!
+⭐️ Conteúdo organizado por # e por lista.
+⭐️ 100% anônimo, ninguém saberá que você faz parte.
+⭐️ Mais de 10k de mídias já postadas.
+⭐️ Todo conteúdo compartilhado é ⁺¹⁸
+
+🚨 <b>Devo confiar no grupo?</b>
+⭐️ Temos mais de 1.000 membros em nosso grupo VIP!!
+
+<b>ESCOLHA SEU PLANO E TENHA ACESSO IMEDIATO!!</b> ⬇️ 🔥`;
+
+  try {
+    await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
+      caption: startCaption,
+      parse_mode: "HTML",
+      ...salesKeyboard(mensalUrl, vitalicioUrl)
+    });
+    console.log("✅ start.mp4 enviado para:", chatId);
+  } catch (e) {
+    console.error("❌ Erro ao enviar start.mp4:", e.message);
+  }
 }
 
 // ================== MERCADO PAGO ==================
@@ -404,7 +401,7 @@ async function blockMedia(msg) {
     "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barGiftVip() }
+      reply_markup: { inline_keyboard: barGiftOnlyBig() } // ✅ aqui só o presente grande
     }
   );
 }
@@ -422,12 +419,12 @@ bot.on("contact", blockMedia);
 
 // ================== FLOW START ==================
 async function runStartFlow(chatId) {
-  await sendStartMedia(chatId);
-
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-  await bot.sendMessage(chatId, "👇 Escolha uma opção abaixo:", salesKeyboard(mensalUrl, vitalicioUrl));
+  // ✅ Agora o START envia vídeo + botões (sem mensagem "Escolha uma opção abaixo")
+  await sendStartMedia(chatId, mensalUrl, vitalicioUrl);
+
   console.log("📨 START flow enviado para:", chatId);
 }
 
@@ -489,7 +486,7 @@ async function runVipFlow(userChatId) {
       "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
       {
         parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ Start + VIP aqui
+        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ mantém Start + VIP aqui
       }
     );
   }
@@ -505,7 +502,7 @@ async function runVipFlow(userChatId) {
   await bot.sendMessage(
     userChatId,
     `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
-    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftVip() } }
+    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftOnlyBig() } } // ✅ aqui só presente grande
   );
 
   console.log("🚀 VIP flow -> link 1 uso enviado para:", userChatId);
@@ -520,7 +517,7 @@ bot.onText(/\/start/i, async (msg) => {
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
     await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.", {
-      reply_markup: { inline_keyboard: barGiftVip() }
+      reply_markup: { inline_keyboard: barGiftOnlyBig() }
     });
   }
 });
@@ -536,7 +533,7 @@ bot.onText(/\/vip/i, async (msg) => {
     await bot.sendMessage(
       userChatId,
       "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
-      { reply_markup: { inline_keyboard: barGiftVip() } }
+      { reply_markup: { inline_keyboard: barGiftOnlyBig() } }
     );
   }
 });
@@ -556,7 +553,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_START:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() }
+        reply_markup: { inline_keyboard: barGiftOnlyBig() }
       });
     }
   }
@@ -567,7 +564,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_GIFT:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao abrir o presente. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() }
+        reply_markup: { inline_keyboard: barGiftOnlyBig() }
       });
     }
   }
@@ -578,7 +575,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_VIP:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao gerar VIP. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() }
+        reply_markup: { inline_keyboard: barGiftOnlyBig() }
       });
     }
   }
