@@ -21,19 +21,6 @@ if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
   throw new Error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no .env / Render");
 }
 
-// ================== START CAPTION (ALTERAÇÃO) ==================
-// 🔥 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗔𝗢𝗦 𝗠𝗘𝗟𝗛𝗢𝗥𝗘𝗦 𝗖𝗢𝗡𝗧𝗘𝗨́𝗗𝗢𝗦 𝗗𝗘 𝗙𝗔𝗠𝗢𝗦𝗔𝗦 𝗘 𝗩𝗔𝗭𝗔𝗗𝗢𝗦 𝗗𝗔 𝗜𝗡𝗧𝗘𝗥𝗡𝗘𝗧!!
- 𝗦𝗼𝗯𝗿𝗲 𝗻𝗼𝘀𝘀𝗼 𝗰𝗮𝗻𝗮𝗹 𝗩𝗜𝗣:👇🏻 
-⭐️1K de mídias atualizadas todos os dias. ⭐️Acesso imediato! 
-⭐️Conteúdo organizado por # e por lista. 
-⭐️100% anônimo, ninguém saberá que você faz parte. 
-⭐️Mais de 10k de mídias já postadas. 
-⭐️Todo conteúdo compartilhado são ⁺¹⁸ 
-🚨𝗗𝗲𝘃𝗼 𝗰𝗼𝗻𝗳𝗶𝗮𝗿 𝗻𝗼 𝗴𝗿𝘂𝗽𝗼? 
-⭐️Temos mais de 1.000 membros em nosso grupo VIP!! 
-𝗘𝗦𝗖𝗢𝗟𝗛𝗔 𝗦𝗘𝗨 𝗣𝗟𝗔𝗡𝗢 𝗘 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗜𝗠𝗘𝗗𝗜𝗔𝗧𝗢!! ⬇️ 🔥`;
-`;
-
 // ================== DB ==================
 const adapter = new JSONFile("db.json");
 const db = new Low(adapter, null);
@@ -143,8 +130,16 @@ async function sendStartMedia(chatId) {
 
   try {
     await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-      // ✅ ALTERAÇÃO: legenda substituída por variável
-      caption: START_VIDEO_CAPTION
+      caption: "🔥 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗔𝗢𝗦 𝗠𝗘𝗟𝗛𝗢𝗥𝗘𝗦 𝗖𝗢𝗡𝗧𝗘𝗨́𝗗𝗢𝗦 𝗗𝗘 𝗙𝗔𝗠𝗢𝗦𝗔𝗦 𝗘 𝗩𝗔𝗭𝗔𝗗𝗢𝗦 𝗗𝗔 𝗜𝗡𝗧𝗘𝗥𝗡𝗘𝗧!!
+ 𝗦𝗼𝗯𝗿𝗲 𝗻𝗼𝘀𝘀𝗼 𝗰𝗮𝗻𝗮𝗹 𝗩𝗜𝗣:👇🏻 
+⭐️1K de mídias atualizadas todos os dias. ⭐️Acesso imediato! 
+⭐️Conteúdo organizado por # e por lista. 
+⭐️100% anônimo, ninguém saberá que você faz parte. 
+⭐️Mais de 10k de mídias já postadas. 
+⭐️Todo conteúdo compartilhado são ⁺¹⁸ 
+🚨𝗗𝗲𝘃𝗼 𝗰𝗼𝗻𝗳𝗶𝗮𝗿 𝗻𝗼 𝗴𝗿𝘂𝗽𝗼? 
+⭐️Temos mais de 1.000 membros em nosso grupo VIP!! 
+𝗘𝗦𝗖𝗢𝗟𝗛𝗔 𝗦𝗘𝗨 𝗣𝗟𝗔𝗡𝗢 𝗘 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗜𝗠𝗘𝗗𝗜𝗔𝗧𝗢!! ⬇️ 🔥`;"
     });
     console.log("✅ start.mp4 enviado para:", chatId);
   } catch (e) {
@@ -154,20 +149,22 @@ async function sendStartMedia(chatId) {
 
 // ================== TECLADOS ==================
 
-// ✅ ALTERAÇÃO: remove VIP e deixa só o presente “esticado” (1 botão por linha)
+// ✅ Barrinha do START inicial: mantém o 🎁 + VIP (não remove)
 function barGiftVip() {
   return [
     [
-      { text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" }
+      { text: "🎁 presente aqui 🎁", callback_data: "DO_GIFT" },
+      { text: "🔓 VIP", callback_data: "DO_VIP" }
     ]
   ];
 }
 
-// ✅ ALTERAÇÃO: VIP bloqueado agora só tem Start (VIP removido)
+// ✅ Barrinha APENAS para tela de VIP bloqueado: Start + VIP
 function barVipBlocked() {
   return [
     [
-      { text: "▶️ Start", callback_data: "DO_START" }
+      { text: "▶️ Start", callback_data: "DO_START" },
+      { text: "🔓 VIP", callback_data: "DO_VIP" }
     ]
   ];
 }
@@ -180,7 +177,7 @@ function salesKeyboard(mensalUrl, vitalicioUrl) {
   if (mensalUrl)    rows.push([{ text: "💳 9,90 / MÊS 💎", url: mensalUrl }]);
   if (vitalicioUrl) rows.push([{ text: "💥 19,99 VITALÍCIO 🔥", url: vitalicioUrl }]);
 
-  // ✅ no START inicial: agora só 🎁
+  // ✅ no START inicial, mantém 🎁 + VIP
   rows.push(...barGiftVip());
 
   return { reply_markup: { inline_keyboard: rows } };
@@ -399,7 +396,7 @@ async function blockMedia(msg) {
     "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
+      reply_markup: { inline_keyboard: barGiftVip() }
     }
   );
 }
@@ -484,7 +481,7 @@ async function runVipFlow(userChatId) {
       "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
       {
         parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ agora só Start
+        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ Start + VIP aqui
       }
     );
   }
@@ -500,7 +497,7 @@ async function runVipFlow(userChatId) {
   await bot.sendMessage(
     userChatId,
     `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
-    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftVip() } } // ✅ agora só 🎁
+    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftVip() } }
   );
 
   console.log("🚀 VIP flow -> link 1 uso enviado para:", userChatId);
@@ -515,7 +512,7 @@ bot.onText(/\/start/i, async (msg) => {
   } catch (e) {
     console.error("❌ Erro no /start:", e?.response?.data || e.message);
     await bot.sendMessage(chatId, "⚠️ Erro ao gerar pagamento. Tente novamente.", {
-      reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
+      reply_markup: { inline_keyboard: barGiftVip() }
     });
   }
 });
@@ -531,12 +528,12 @@ bot.onText(/\/vip/i, async (msg) => {
     await bot.sendMessage(
       userChatId,
       "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
-      { reply_markup: { inline_keyboard: barGiftVip() } } // ✅ agora só 🎁
+      { reply_markup: { inline_keyboard: barGiftVip() } }
     );
   }
 });
 
-// ================== CALLBACKS (🎁 / Start) ==================
+// ================== CALLBACKS (🎁 / Start / VIP) ==================
 bot.on("callback_query", async (query) => {
   const chatId = query.message?.chat?.id;
   const data = query.data;
@@ -551,7 +548,7 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_START:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao iniciar. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
+        reply_markup: { inline_keyboard: barGiftVip() }
       });
     }
   }
@@ -562,12 +559,21 @@ bot.on("callback_query", async (query) => {
     } catch (e) {
       console.error("❌ Erro DO_GIFT:", e?.response?.data || e.message);
       await bot.sendMessage(chatId, "⚠️ Erro ao abrir o presente. Tente novamente.", {
-        reply_markup: { inline_keyboard: barGiftVip() } // ✅ agora só 🎁
+        reply_markup: { inline_keyboard: barGiftVip() }
       });
     }
   }
 
-  // ✅ ALTERAÇÃO: removido DO_VIP porque não existe mais botão VIP
+  if (data === "DO_VIP") {
+    try {
+      await runVipFlow(chatId);
+    } catch (e) {
+      console.error("❌ Erro DO_VIP:", e?.response?.data || e.message);
+      await bot.sendMessage(chatId, "⚠️ Erro ao gerar VIP. Tente novamente.", {
+        reply_markup: { inline_keyboard: barGiftVip() }
+      });
+    }
+  }
 });
 
 // ================== START SERVER + WEBHOOK ==================
