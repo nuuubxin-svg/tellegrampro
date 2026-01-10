@@ -9,12 +9,12 @@ const fs = require("fs");
 const path = require("path");
 
 // ================== ENV ==================
-const TOKEN = process.env.TOKEN; // coloque no Render
+const TOKEN = process.env.TOKEN;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-let PUBLIC_URL = process.env.PUBLIC_URL; // ex: https://telegrampro.onrender.com
+let PUBLIC_URL = process.env.PUBLIC_URL; // ex: https://tellegrampro.onrender.com
 const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP || "");
+const PORT = Number(process.env.PORT || 3000);
 const PREVIAS_LINK = process.env.PREVIAS_LINK || "https://t.me/seu_canal_previas";
-const PORT = process.env.PORT || 3000;
 
 if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
   console.error("❌ Falta TOKEN, MP_ACCESS_TOKEN, PUBLIC_URL ou CHAT_ID_VIP no Render.");
@@ -47,6 +47,7 @@ function markProcessed(paymentId) {
   db.data.processed_payments.push(String(paymentId));
 }
 
+// NÃO resetar vip_sent ao autorizar novamente (idempotência real)
 function setAuthorized(userId) {
   const uid = String(userId);
   const existing = db.data.vip_access.find((v) => v.userId === uid);
@@ -72,6 +73,7 @@ function consume(userId) {
   if (row) row.status = "consumed";
 }
 
+// trava anti-duplicidade do VIP automático
 function hasVipSent(userId) {
   const uid = String(userId);
   const row = db.data.vip_access.find((v) => v.userId === uid);
@@ -104,25 +106,26 @@ app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (_, res) => res.send("OK ✅ (server on)"));
 app.get("/telegram", (_, res) => res.send("OK ✅ (telegram endpoint expects POST)"));
-
-app.get("/mp/success", (_, res) =>
-  res.send("✅ Pagamento concluído. Volte ao Telegram e aguarde o link VIP.")
-);
+app.get("/mp/success", (_, res) => res.send("✅ Pagamento concluído. Volte ao Telegram e aguarde o link VIP."));
 app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
 app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 
 // ================== BOT (webhook) ==================
 const bot = new TelegramBot(TOKEN, { polling: false });
 
-// Telegram chama isso via POST
-app.post("/telegram", (req, res) => {
-  // responda rápido para o Telegram
+// ✅ Endpoint do webhook do Telegram (POST)
+app.post("/telegram", async (req, res) => {
+  // responde imediatamente para o Telegram
   res.sendStatus(200);
 
-  // processa em seguida
-  bot
-    .processUpdate(req.body)
-    .catch((e) => console.error("❌ processUpdate:", e?.message || e));
+  // LOG para confirmar que o Telegram está chegando
+  console.log("📩 UPDATE DO TELEGRAM:", JSON.stringify(req.body));
+
+  try {
+    await bot.processUpdate(req.body);
+  } catch (e) {
+    console.error("❌ processUpdate:", e?.message || e);
+  }
 });
 
 // ================== TECLADOS ==================
@@ -168,7 +171,7 @@ async function sendStartMedia(chatId, mensalUrl, vitalicioUrl) {
 
   const caption = `✅ <b>Bem-vindo!</b>
 
-Aqui você pode assinar um plano e receber acesso ao nosso grupo VIP automaticamente após a aprovação do pagamento.
+Assine um plano e receba acesso ao grupo VIP automaticamente após a aprovação do pagamento.
 
 <b>Escolha um plano abaixo:</b>`;
 
@@ -180,6 +183,7 @@ Aqui você pode assinar um plano e receber acesso ao nosso grupo VIP automaticam
         parse_mode: "HTML",
         ...salesKeyboard(mensalUrl, vitalicioUrl),
       });
+      console.log("✅ start.mp4 enviado para:", chatId);
       return;
     } catch (e) {
       console.error("❌ Erro ao enviar start.mp4:", e?.message || e);
@@ -389,6 +393,7 @@ async function runGiftFlow(chatId) {
         parse_mode: "HTML",
         ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl),
       });
+      console.log("✅ pagamento.mp4 enviado para:", chatId);
       return;
     } catch (e) {
       console.error("❌ Erro ao enviar pagamento.mp4:", e?.message || e);
@@ -443,7 +448,7 @@ async function runVipFlow(userChatId) {
   console.log("🚀 VIP flow -> link 1 uso enviado para:", userChatId);
 }
 
-// ================== COMANDOS ==================
+// ================== /start ==================
 bot.onText(/\/start/i, async (msg) => {
   const chatId = msg.chat.id;
   try {
@@ -456,6 +461,7 @@ bot.onText(/\/start/i, async (msg) => {
   }
 });
 
+// ================== /vip ==================
 bot.onText(/\/vip/i, async (msg) => {
   const userChatId = msg.chat.id;
   try {
@@ -480,9 +486,17 @@ bot.on("callback_query", async (query) => {
     await bot.answerCallbackQuery(query.id);
   } catch (_) {}
 
-  if (data === "DO_START") return runStartFlow(chatId).catch(console.error);
-  if (data === "DO_GIFT") return runGiftFlow(chatId).catch(console.error);
-  if (data === "DO_VIP") return runVipFlow(chatId).catch(console.error);
+  if (data === "DO_START") {
+    try { await runStartFlow(chatId); } catch (e) { console.error(e); }
+  }
+
+  if (data === "DO_GIFT") {
+    try { await runGiftFlow(chatId); } catch (e) { console.error(e); }
+  }
+
+  if (data === "DO_VIP") {
+    try { await runVipFlow(chatId); } catch (e) { console.error(e); }
+  }
 });
 
 // ================== START SERVER + WEBHOOK ==================
@@ -495,9 +509,8 @@ bot.on("callback_query", async (query) => {
     const telegramWebhookUrl = `${PUBLIC_URL}/telegram`;
 
     try {
-      // evita acumular updates antigos
       await bot.setWebHook(telegramWebhookUrl, { drop_pending_updates: true });
-      console.log("✅ Telegram webhook setado:", telegramWebhookUrl);
+      console.log("✅ Telegram webhook:", telegramWebhookUrl);
     } catch (e) {
       console.error("❌ Falha ao setar webhook:", e?.message || e);
     }
