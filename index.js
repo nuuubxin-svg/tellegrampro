@@ -180,20 +180,20 @@ async function sendStartMedia(chatId, mensalUrl, vitalicioUrl) {
     return;
   }
 
-  const startCaption = `🔥 <b>TENHA ACESSO AOS MELHORES CONTEÚDOS DE FAMOSAS E VAZADOS DA INTERNET!!</b>
+  const startCaption = `🔥 <b>TENHA ACESSO AOS MELHORES CONTEÚDOS DE FAMOSAS E VAZADOS DA INTERNET!</b>
 
 <b>Sobre nosso canal VIP:</b> 👇🏻
 ⭐️ 1K de mídias atualizadas todos os dias.
-⭐️ Acesso imediato!
+⭐️ Acesso imediato.
 ⭐️ Conteúdo organizado por # e por lista.
-⭐️ 100% anônimo, ninguém saberá que você faz parte.
+⭐️ 100% anônimo (ninguém saberá que você faz parte).
 ⭐️ Mais de 10k de mídias já postadas.
 ⭐️ Todo conteúdo compartilhado é ⁺¹⁸
 
 🚨 <b>Devo confiar no grupo?</b>
-⭐️ Temos mais de 1.000 membros em nosso grupo VIP!!
+⭐️ Temos mais de 1.000 membros no VIP!
 
-<b>ESCOLHA SEU PLANO E TENHA ACESSO IMEDIATO!!</b> ⬇️ 🔥`;
+<b>ESCOLHA SEU PLANO E TENHA ACESSO IMEDIATO!</b> ⬇️ 🔥`;
 
   try {
     await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
@@ -376,7 +376,7 @@ app.post("/mp/webhook", (req, res) => {
           await db.write();
         }
 
-        console.log("🎉 VIP LIBERADO + enviado automático para userId:", userId);
+        console.log("🎉 VIP liberado e enviado automaticamente para userId:", userId);
       } else {
         console.log("🟡 Não liberou (ainda não aprovado ou não bateu):", { status, userId, amount, planId, expected });
       }
@@ -398,10 +398,10 @@ async function blockMedia(msg) {
 
   await bot.sendMessage(
     chatId,
-    "🚫 Não aceito áudio/foto/vídeo/arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
+    "🚫 Não aceito áudio, fotos, vídeos ou arquivos aqui.\n✅ Envie apenas *texto* ou use os botões:",
     {
       parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barGiftOnlyBig() } // ✅ aqui só o presente grande
+      reply_markup: { inline_keyboard: barGiftOnlyBig() }
     }
   );
 }
@@ -422,7 +422,7 @@ async function runStartFlow(chatId) {
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-  // ✅ Agora o START envia vídeo + botões (sem mensagem "Escolha uma opção abaixo")
+  // ✅ START envia vídeo + botões
   await sendStartMedia(chatId, mensalUrl, vitalicioUrl);
 
   console.log("📨 START flow enviado para:", chatId);
@@ -435,12 +435,14 @@ async function runGiftFlow(chatId) {
 
   const videoPath = path.join(__dirname, "assets", "pagamento.mp4");
 
-  const captionText = "Bloqueira de Salvador
+  // ✅ TEXTO CORRIGIDO + SEM QUEBRAR DEPLOY (template string)
+  const captionText = `🔥 <b>Blogueira de Salvador</b> 🔥
 
-Essa semana, a influencer de Salvador está dando o que falar após seus vídeos íntimos caírem na rede.
+Essa semana, uma influenciadora de Salvador está dando o que falar após vídeos íntimos vazarem na internet.
 
-São mais de 8 vídeos exclusivos que estão circulando.
-Quer saber mais?";
+✅ São mais de <b>8 vídeos exclusivos</b> circulando.
+
+Quer saber mais? 👇`;
 
   if (!fs.existsSync(videoPath)) {
     console.log("⚠️ pagamento.mp4 NÃO encontrado:", videoPath);
@@ -449,7 +451,7 @@ Quer saber mais?";
     await bot.sendMessage(
       chatId,
       captionText,
-      { parse_mode: "Markdown", ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl) }
+      { parse_mode: "HTML", ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl) }
     );
     return;
   }
@@ -457,7 +459,7 @@ Quer saber mais?";
   try {
     await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
       caption: captionText,
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
       ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl)
     });
     console.log("✅ pagamento.mp4 enviado para:", chatId);
@@ -468,7 +470,7 @@ Quer saber mais?";
     await bot.sendMessage(
       chatId,
       captionText,
-      { parse_mode: "Markdown", ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl) }
+      { parse_mode: "HTML", ...paymentOnlyKeyboard(mensalUrl, vitalicioUrl) }
     );
   }
 }
@@ -488,10 +490,10 @@ async function runVipFlow(userChatId) {
       "1) Clique no botão *▶️ Start*\n" +
       "2) Faça o pagamento\n" +
       "3) Aguarde a aprovação (o link aparecerá automaticamente)\n\n" +
-      "Se você já pagou e ainda não liberou, aguarde 1-2 min e tente /vip novamente.",
+      "Se você já pagou e ainda não liberou, aguarde 1–2 minutos e tente /vip novamente.",
       {
         parse_mode: "Markdown",
-        reply_markup: { inline_keyboard: barVipBlocked() } // ✅ mantém Start + VIP aqui
+        reply_markup: { inline_keyboard: barVipBlocked() }
       }
     );
   }
@@ -507,7 +509,7 @@ async function runVipFlow(userChatId) {
   await bot.sendMessage(
     userChatId,
     `✅ *Acesso liberado!*\n\n🔓 Link VIP (1 uso):\n${invite.invite_link}`,
-    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftOnlyBig() } } // ✅ aqui só presente grande
+    { parse_mode: "Markdown", reply_markup: { inline_keyboard: barGiftOnlyBig() } }
   );
 
   console.log("🚀 VIP flow -> link 1 uso enviado para:", userChatId);
@@ -537,7 +539,7 @@ bot.onText(/\/vip/i, async (msg) => {
     console.error("❌ ERRO no /vip:", e?.response?.data || e.message);
     await bot.sendMessage(
       userChatId,
-      "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão de convidar via link.",
+      "⚠️ Erro ao gerar link VIP.\nConfirme se o bot é ADMIN no VIP e tem permissão para criar links de convite.",
       { reply_markup: { inline_keyboard: barGiftOnlyBig() } }
     );
   }
