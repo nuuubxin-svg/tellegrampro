@@ -128,18 +128,26 @@ async function sendStartMedia(chatId) {
     return;
   }
 
+  // ✅ CAPTION CORRIGIDA (sem quebrar deploy)
+  const startCaption = `🔥 <b>TENHA ACESSO AOS MELHORES CONTEÚDOS DE FAMOSAS E VAZADOS DA INTERNET!!</b>
+
+<b>Sobre nosso canal VIP:</b> 👇🏻
+⭐️ 1K de mídias atualizadas todos os dias.
+⭐️ Acesso imediato!
+⭐️ Conteúdo organizado por # e por lista.
+⭐️ 100% anônimo, ninguém saberá que você faz parte.
+⭐️ Mais de 10k de mídias já postadas.
+⭐️ Todo conteúdo compartilhado é ⁺¹⁸
+
+🚨 <b>Devo confiar no grupo?</b>
+⭐️ Temos mais de 1.000 membros em nosso grupo VIP!!
+
+<b>ESCOLHA SEU PLANO E TENHA ACESSO IMEDIATO!!</b> ⬇️ 🔥`;
+
   try {
     await bot.sendVideo(chatId, fs.createReadStream(videoPath), {
-      caption: "🔥 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗔𝗢𝗦 𝗠𝗘𝗟𝗛𝗢𝗥𝗘𝗦 𝗖𝗢𝗡𝗧𝗘𝗨́𝗗𝗢𝗦 𝗗𝗘 𝗙𝗔𝗠𝗢𝗦𝗔𝗦 𝗘 𝗩𝗔𝗭𝗔𝗗𝗢𝗦 𝗗𝗔 𝗜𝗡𝗧𝗘𝗥𝗡𝗘𝗧!!
- 𝗦𝗼𝗯𝗿𝗲 𝗻𝗼𝘀𝘀𝗼 𝗰𝗮𝗻𝗮𝗹 𝗩𝗜𝗣:👇🏻 
-⭐️1K de mídias atualizadas todos os dias. ⭐️Acesso imediato! 
-⭐️Conteúdo organizado por # e por lista. 
-⭐️100% anônimo, ninguém saberá que você faz parte. 
-⭐️Mais de 10k de mídias já postadas. 
-⭐️Todo conteúdo compartilhado são ⁺¹⁸ 
-🚨𝗗𝗲𝘃𝗼 𝗰𝗼𝗻𝗳𝗶𝗮𝗿 𝗻𝗼 𝗴𝗿𝘂𝗽𝗼? 
-⭐️Temos mais de 1.000 membros em nosso grupo VIP!! 
-𝗘𝗦𝗖𝗢𝗟𝗛𝗔 𝗦𝗘𝗨 𝗣𝗟𝗔𝗡𝗢 𝗘 𝗧𝗘𝗡𝗛𝗔 𝗔𝗖𝗘𝗦𝗦𝗢 𝗜𝗠𝗘𝗗𝗜𝗔𝗧𝗢!! ⬇️ 🔥`;"
+      caption: startCaption,
+      parse_mode: "HTML"
     });
     console.log("✅ start.mp4 enviado para:", chatId);
   } catch (e) {
