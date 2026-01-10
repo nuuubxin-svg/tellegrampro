@@ -8,12 +8,17 @@ const { JSONFile } = require("lowdb/node");
 const fs = require("fs");
 const path = require("path");
 
+// ✅ FIX: assinatura pra provar que ESTE arquivo está no ar
+console.log("🔥 RUNNING: index.js (FULL BOT) v1");
+
 // ================== ENV ==================
 const TOKEN = process.env.TOKEN;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
-const PUBLIC_URL = process.env.PUBLIC_URL;            // ex: https://tellegrampro.onrender.com
+const PUBLIC_URL = process.env.PUBLIC_URL;            // ex: https://tellegramapro1.onrender.com
 const CHAT_ID_VIP = String(process.env.CHAT_ID_VIP);  // ex: -1003676681893
-const PORT = Number(process.env.PORT || 3000);
+
+// ✅ FIX: Render geralmente usa PORT 10000
+const PORT = Number(process.env.PORT || 10000);
 
 const PREVIAS_LINK = process.env.PREVIAS_LINK || "https://t.me/+QCsWxHpN0CtiZmU5";
 
@@ -23,7 +28,9 @@ if (!TOKEN || !MP_ACCESS_TOKEN || !PUBLIC_URL || !CHAT_ID_VIP) {
 
 // ================== DB ==================
 const adapter = new JSONFile("db.json");
-const db = new Low(adapter, null);
+
+// ✅ FIX: não deixar null como default
+const db = new Low(adapter, { processed_payments: [], vip_access: [] });
 
 // ✅ lock em memória para evitar corrida de webhooks simultâneos
 const processingPayments = new Set();
@@ -173,7 +180,8 @@ function vipAccessKeyboard(inviteLink) {
 
 // ================== START VIDEO ==================
 async function sendStartMedia(chatId, mensalUrl, vitalicioUrl) {
-  const videoPath = path.join(__dirname, "assets", "start.mp4");
+  // ✅ FIX: você usa pasta "ativos"
+  const videoPath = path.join(__dirname, "ativos", "start.mp4");
 
   if (!fs.existsSync(videoPath)) {
     console.log("⚠️ start.mp4 NÃO encontrado:", videoPath);
@@ -433,9 +441,9 @@ async function runGiftFlow(chatId) {
   const mensalUrl = await criarPreferencia(PLANS.mensal, chatId);
   const vitalicioUrl = await criarPreferencia(PLANS.vitalicio, chatId);
 
-  const videoPath = path.join(__dirname, "assets", "pagamento.mp4");
+  // ✅ FIX: você usa pasta "ativos"
+  const videoPath = path.join(__dirname, "ativos", "pagamento.mp4");
 
-  // ✅ TEXTO CORRIGIDO + SEM QUEBRAR DEPLOY (template string)
   const captionText = `🔥 <b>Blogueira de Salvador</b> 🔥
 
 Essa semana, uma influenciadora de Salvador está dando o que falar após vídeos íntimos vazarem na internet.
@@ -447,7 +455,6 @@ Quer saber mais? 👇`;
   if (!fs.existsSync(videoPath)) {
     console.log("⚠️ pagamento.mp4 NÃO encontrado:", videoPath);
 
-    // fallback: manda só mensagem com botões
     await bot.sendMessage(
       chatId,
       captionText,
@@ -466,7 +473,6 @@ Quer saber mais? 👇`;
   } catch (e) {
     console.error("❌ Erro ao enviar pagamento.mp4:", e.message);
 
-    // fallback: manda só mensagem com botões
     await bot.sendMessage(
       chatId,
       captionText,
