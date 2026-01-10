@@ -435,7 +435,12 @@ async function runGiftFlow(chatId) {
 
   const videoPath = path.join(__dirname, "assets", "pagamento.mp4");
 
-  const captionText = "🔥 VAZADO PELO MOTOBOY 🔥\n🔥🔥 COMPLETO NO VIP 🔥🔥";
+  const captionText = "Bloqueira de Salvador
+
+Essa semana, a influencer de Salvador está dando o que falar após seus vídeos íntimos caírem na rede.
+
+São mais de 8 vídeos exclusivos que estão circulando.
+Quer saber mais?";
 
   if (!fs.existsSync(videoPath)) {
     console.log("⚠️ pagamento.mp4 NÃO encontrado:", videoPath);
