@@ -107,7 +107,6 @@ app.get("/mp/failure", (_, res) => res.send("❌ Pagamento falhou."));
 app.get("/mp/pending", (_, res) => res.send("🟡 Pagamento pendente."));
 
 // ================== BOT (webhook) ==================
-// ✅ correção: no modo webhook, use webHook:true
 const bot = new TelegramBot(TOKEN, { webHook: true });
 
 // ✅ log para confirmar que mensagens chegam (remova depois se quiser)
@@ -122,7 +121,6 @@ app.post("/telegram", async (req, res) => {
   res.sendStatus(200);
 
   try {
-    // log leve do update (evita log gigante)
     const u = req.body || {};
     const t = u?.message?.text || u?.callback_query?.data || "";
     console.log("📩 Update do Telegram:", t);
@@ -383,37 +381,6 @@ app.post("/mp/webhook", (req, res) => {
     }
   });
 });
-
-// ================== BLOQUEIO DE MÍDIA ==================
-async function blockMedia(msg) {
-  const chatId = msg.chat.id;
-  const text = msg.text || "";
-  if (/^\/start/i.test(text) || /^\/vip/i.test(text)) return;
-
-  try {
-    await bot.deleteMessage(chatId, msg.message_id);
-  } catch (_) {}
-
-  await bot.sendMessage(
-    chatId,
-    "🚫 Não aceito áudio, fotos, vídeos ou arquivos aqui.\n✅ Envie apenas texto ou use os botões:",
-    {
-      parse_mode: "Markdown",
-      reply_markup: { inline_keyboard: barGiftOnlyBig() },
-    }
-  );
-}
-
-bot.on("photo", blockMedia);
-bot.on("voice", blockMedia);
-bot.on("audio", blockMedia);
-bot.on("video", blockMedia);
-bot.on("video_note", blockMedia);
-bot.on("document", blockMedia);
-bot.on("animation", blockMedia);
-bot.on("sticker", blockMedia);
-bot.on("location", blockMedia);
-bot.on("contact", blockMedia);
 
 // ================== FLOW START ==================
 async function runStartFlow(chatId) {
